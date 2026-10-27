@@ -173,3 +173,14 @@ AI 默认开启，输入防抖并取消过时请求；搜索按相关度排列�
 素材库用户反馈 pnpm 11 拒绝 Git 依赖的 `prepare` 后，同时修复创作仓库的相同分发方式：提交 `lib/` 中的 Host、Client、模型目录和图标许可证，移除 `prepare`、`prepack`，通过 `npm run pack:release` 显式构建打包。CI 检查源码重建产物无差异，分发检查拒绝安装生命周期构建钩子及未提交产物。生成、媒体及项目数据格式不变。
 
 本机类型检查、72/72 测试、Host/Client 构建及分发检查、tgz 打包通过。pnpm 11.25.0 在独立目录通过本地 Git 与真实私有 GitHub 提交 `f1f7244` 安装，未给本插件加入 allowBuilds，均 exitCode=0。Host 实际 import、Client ModuleLoader 注册和安装产物 SHA-256 检查通过，修复提交的 GitHub CI 全部通过。固定安装标签为 `v0.2.22`。此次只验证分发与加载入口，没有重跑完整浏览器交互；运行源码未变。
+
+
+## 0.2.23 · DSH 0.2.1-rc.3 适配（2026-10-28）
+
+用户在 Windows 的 DSH 0.2.1-rc.3 安装旧包时，运行要求仍精确声明 0.2.0-rc.2，被官方安装器回滚。此次升级开发用 DSH 包、peerDependencies 与 engines.dsh 到发布的 0.2.1-rc.3，重建预构建产物；保留旧安装标签。不更改用户宿主、不授予版本豁免、不改变业务数据格式。
+
+本机 macOS ARM64 / Node 26.8.1 / pnpm 11.25.0，基于上次发布后的未提交适配：Host/Client 类型检查、72/72 业务测试、构建、分发检查与 tgz 打包通过。Zod 固定为官方 storage-domain 使用的 4.4.3，避免不同版本结构类型比较导致编译长时间卡住。CI 新增 npm run check:compatibility，调用官方 0.2.1-rc.3 app-boot 的 evaluatePluginCompatibility，分别检查 engines.dsh 与 peers；未配置版本豁免。
+
+使用 npm 发布的 DSH CLI 0.2.1-rc.3，在独立 DSH_HOME 的 plugin-check profile 安装素材库 0.6.8 与创作 0.2.23，安装 exitCode=0。未给两个插件配置 allowBuilds，仅依宿主流程批准已核对的 FFmpeg/FFprobe macOS ARM64 精确版本脚本。安装后的 Host/Client 与本地最终构建逐字节一致。
+
+4322 隔离 Web 宿主实际加载两个 bundle，浏览器显示原生「素材库」空库页面及「创作」项目列表；新建验证项目后进入画布并显示已保存，刷新后仍可读取该项目，浏览器 error 日志为空。仓库可见性已通过 GitHub API 确认为公开。Windows 实机、桌面安装向导逐按钮及真实付费供应商未覆盖；未修改个人 DSH 配置或既有素材格式。

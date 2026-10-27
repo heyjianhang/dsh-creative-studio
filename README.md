@@ -1,6 +1,6 @@
 # 创作 · DSH Creative Studio
 
-DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.22`。
+DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.23`。
 
 ## 已实现
 
@@ -33,12 +33,12 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.22`。
 
 ## 安装
 
-目标版本：DSH `0.2.0-rc.2`、Cordis `4.0.5`，Node.js >=22.19。
+目标版本：DSH `0.2.1-rc.3`、Cordis `4.0.5`，Node.js >=22.19。
 
 在 DSH「插件 → 添加插件」中输入以下任一来源：
 
-- GitHub：`https://github.com/heyjianhang/dsh-creative-studio.git`。这是私有仓库，安装器所在电脑的 Git 需要有读取权限。仅在浏览器中登录 GitHub 不保证 Git 已认证。
-- 本机安装包：构建好的 `dsh-creative-studio-0.2.22.tgz` 的绝对路径。
+- GitHub：`https://github.com/heyjianhang/dsh-creative-studio.git`。仓库现已公开，可直接使用；推荐固定版本：`https://github.com/heyjianhang/dsh-creative-studio.git#v0.2.23`。
+- 本机安装包：构建好的 `dsh-creative-studio-0.2.23.tgz` 的绝对路径。
 - 本机源码目录：先执行 `npm ci && npm run check`，再填写仓库绝对路径。
 
 仓库已提交构建好的 `lib/`，Git 安装直接使用 Host/Client 产物，不执行本插件的构建脚本，也不需要为插件添加 `allowBuilds`。包尚未发布到 npm，不能直接填裸包名 `dsh-creative-studio`。
@@ -46,12 +46,12 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.22`。
 CLI 安装本地包：
 
 ```sh
-dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.22.tgz
+dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.23.tgz
 ```
 
 图形安装器安装后默认启用 bundle，侧栏出现「创作」。CLI `add` 安装依赖后还需在插件页启用；自行管理 profile 时将 `dsh-creative-studio` 加入 `dsh.profile.bundles`。本机 tarball 已在隔离 profile 安装加载；远程 Git 安装验证见[验证记录](docs/studio.md)。Windows 安装尚未实机验证。
 
-素材库是可选依赖，已验证与 `dsh-asset-library@0.6.6` 同时安装加载。未启用时仍可使用本地上传。文本优化和助手使用 DSH 已配置的模型与密钥；文字密钥由 DSH 管理；图片/视频连接的密钥由本插件 Host 存储。隔离预览未配置密钥时会显示可理解的错误，不影响画布操作。
+素材库是可选依赖，已验证与 `dsh-asset-library@0.6.8` 同时安装加载。未启用时仍可使用本地上传。文本优化和助手使用 DSH 已配置的模型与密钥；文字密钥由 DSH 管理；图片/视频连接的密钥由本插件 Host 存储。隔离预览未配置密钥时会显示可理解的错误，不影响画布操作。
 
 ## 使用
 
@@ -81,6 +81,7 @@ dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.22.
 ```sh
 npm ci
 npm run typecheck
+npm run check:compatibility
 npm test
 npm run pack:release
 ```
@@ -99,3 +100,5 @@ npm run pack:release
 开发工具箱来自 `heyjianhang/dsh-plugin-devkit`（Git remote `template`），业务实现独立维护。未复制参考生图插件或商业产品源码。
 
 画布会按文本、图片、视频分别保存最近选择的模型、参数与数量，新节点沿用；已有节点保留自身配置。@ 只列出连入当前节点的兼容素材，添加参考请用 + 或拖动连线。圆形连接点支持扩大范围吸附，也可拖到目标卡片松手连接。生成期间发送按钮显示忙碌动效并可停止，媒体卡片显示扫光；错误仍在下方提供重试。
+
+当前版本面向 DSH 0.2.1-rc.3；旧版 DSH 0.2.0-rc.2 请使用原有安装标签。安装无需版本豁免。

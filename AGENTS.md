@@ -30,11 +30,11 @@
 
 ## 当前项目
 
-独立插件「创作」，包名 dsh-creative-studio。私有远程为 heyjianhang/dsh-creative-studio；工具箱来源保存在 template remote，不向工具箱推送。
+独立插件「创作」，包名 dsh-creative-studio。公开远程为 heyjianhang/dsh-creative-studio；工具箱来源保存在 template remote，不向工具箱推送。
 
 用户要求：只有画布创作，点击侧栏入口进入 DSH 正常内容页（我的项目/模板库），保留宿主主侧栏，不设首页和二级插件侧栏；仅打开项目后进入全屏画布，左上返回项目列表；进入画布后悬浮工具栏，一个添加入口及双击空白菜单。主题跟随 DSH。文本能力复用 DSH；图片与视频采用「供应商连接 → 多个模型」，原生设置中配置连接密钥，节点选择模型并按能力显示参数。文字生成状态显示在卡片；图片/视频卡片只显示生成动效，进度、错误和操作放在下方输入面板，输入框保持可编辑。上传、素材引用和生成结果选中后均显示生成输入框，可继续生成；上传原件保留在画布上，新生成输出另建节点。Agent 采用原生对话；素材支持上传和素材库引用。画布统一「素材库」入口，顶层切换「创作素材 / 素材库」：前者以文件夹整理，个人/当前项目作为小范围选择；后者浏览独立资源管理插件，可直接加入画布或存入创作文件夹。不提供团队空间。
 
-DSH 0.2.0-rc.2 / Cordis 4.0.5 / React 18。通过 Slots、Primitives、Locale、Typert 和 storageDomain 接入。注册与资源释放随插件生命周期；数据只由 Host 修改，版本冲突不得静默覆盖。只在隔离 DSH_HOME/profile 验证，不修改个人宿主源码/配置。
+DSH 0.2.1-rc.3 / Cordis 4.0.5 / React 18。通过 Slots、Primitives、Locale、Typert 和 storageDomain 接入。注册与资源释放随插件生命周期；数据只由 Host 修改，版本冲突不得静默覆盖。只在隔离 DSH_HOME/profile 验证，不修改个人宿主源码/配置。
 
 用户确定的图片/视频配置流程：供应商预设 → 填 Key → 获取最新模型 → 勾选添加，参数按模型能力显示。当前仅接火山方舟（按量计费）与火山 Agent Plan；在同一表单顶部选择供应商，下方随选择切换；Base URL 预填并直接显示，凭证和模型目录按接入方式区分。连接弹窗保存立即落盘，成功前不关闭；已保存密钥不回显，留空保留。费用不要求手填单价，调用用量与实际账单分开表达；公开目录与账号权限分开表达，未知协议不自动视为已支持。目录刷新不自动替换已添加模型与生成快照；原有 preset 只作兼容读取。
 
@@ -48,3 +48,5 @@ DSH 0.2.0-rc.2 / Cordis 4.0.5 / React 18。通过 Slots、Primitives、Locale、
 [设计与验证](docs/studio.md)、[文本生成与参考](docs/text-generation.md)、[图片与视频生成](docs/media-generation.md)、[安装说明](README.md)。
 
 项目分发约定：lib/ 构建产物随 Git 提交；不得添加 prepare、prepack 等安装生命周期构建钩子。修改运行源码后重建 lib/ 并一同提交，CI 校验产物无差异，避免私有 Git 安装依赖插件构建白名单。
+
+兼容基线：开发依赖与运行声明固定为 DSH 0.2.1-rc.3。发布前运行 npm run check:compatibility，使用已安装官方 app-boot 的真实兼容检查器；不得仅放宽版本范围或配置 allow-version 来使安装通过。
