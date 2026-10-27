@@ -172,4 +172,4 @@ AI 默认开启，输入防抖并取消过时请求；搜索按相关度排列�
 
 素材库用户反馈 pnpm 11 拒绝 Git 依赖的 `prepare` 后，同时修复创作仓库的相同分发方式：提交 `lib/` 中的 Host、Client、模型目录和图标许可证，移除 `prepare`、`prepack`，通过 `npm run pack:release` 显式构建打包。CI 检查源码重建产物无差异，分发检查拒绝安装生命周期构建钩子及未提交产物。生成、媒体及项目数据格式不变。
 
-本机类型检查、72/72 测试、Host/Client 构建及分发检查、tgz 打包通过。Git 无插件构建批准安装及加载验证待执行。
+本机类型检查、72/72 测试、Host/Client 构建及分发检查、tgz 打包通过。pnpm 11.25.0 在独立目录通过本地 Git 与真实私有 GitHub 提交 `f1f7244` 安装，未给本插件加入 allowBuilds，均 exitCode=0。Host 实际 import、Client ModuleLoader 注册和安装产物 SHA-256 检查通过，修复提交的 GitHub CI 全部通过。固定安装标签为 `v0.2.22`。此次只验证分发与加载入口，没有重跑完整浏览器交互；运行源码未变。
