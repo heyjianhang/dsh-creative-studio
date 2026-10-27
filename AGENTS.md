@@ -1,8 +1,8 @@
 # DSH 插件开发入口
 
-仓库：`heyjianhang/dsh-plugin-devkit`；项目名称：DSH Plugin Devkit。
+项目：`dsh-creative-studio`，显示名称「创作」。模板来源：`heyjianhang/dsh-plugin-devkit`。
 
-本仓库提供通用的 DeepSeek Harness 插件开发流程。业务目标、源码结构、技术选型由当前需求决定。已有项目在原结构上迭代，不为套用模板重排代码。
+本仓库是 DeepSeek Harness 原生创作画布插件，保留工具箱的开发规范和官方参考。源码按 Host、Client、shared 分工，不修改宿主源码。
 
 ## 开始工作
 
@@ -28,27 +28,21 @@
 - 原生界面通过目标版本支持的 Slots、公共组件、主题与语言机制接入。前端、工具等多个入口若操作同一业务，复用同一业务校验与数据所有者。
 - 注册、订阅、定时器和自有进程有明确生命周期；验证与本次修改相关的禁用、重载和退出行为。
 
-## 当前状态与真实命令
+## 当前项目
 
-目前有开发流程、官方参考生成器、参考资料、文档模板和检查脚本。尚无业务插件、已选择的宿主运行基线或 DSH 构建/安装命令。
+独立插件「创作」，包名 dsh-creative-studio。私有远程为 heyjianhang/dsh-creative-studio；工具箱来源保存在 template remote，不向工具箱推送。
 
-- `node scripts/check-base.mjs`：检查本仓库 Markdown 文件链接及 Skill 入口。
-- `node --test scripts/check-base.test.mjs`：测试检查脚本的有效输入、失败检测及退出状态。
-- `node scripts/sync-official-skill.mjs`：联网同步并生成官方参考 Skill；`--check` 只读检查，`--ref` 固定版本。行为和来源范围见 [同步说明](docs/official-skill-sync.md)。
-- `node .agents/skills/dsh-official-reference/scripts/verify-local.mjs`：离线核对全部文档覆盖、原文与产物哈希；查看 [覆盖报告](.agents/skills/dsh-official-reference/coverage.md)。
-- `node --test scripts/sync-official-skill.test.mjs`：离线测试生成、更新、失败和回退。
-- 检查与测试不安装依赖、不启动宿主；只有同步命令联网。使用 Node.js 22 或更高版本；实际验证环境见 [base 状态](docs/base-status.md)。
+用户要求：只有画布创作，点击侧栏入口进入 DSH 正常内容页（我的项目/模板库），保留宿主主侧栏，不设首页和二级插件侧栏；仅打开项目后进入全屏画布，左上返回项目列表；进入画布后悬浮工具栏，一个添加入口及双击空白菜单。主题跟随 DSH。文本能力复用 DSH；图片与视频采用「供应商连接 → 多个模型」，原生设置中配置连接密钥，节点选择模型并按能力显示参数。文字生成状态显示在卡片；图片/视频卡片只显示生成动效，进度、错误和操作放在下方输入面板，输入框保持可编辑。上传、素材引用和生成结果选中后均显示生成输入框，可继续生成；上传原件保留在画布上，新生成输出另建节点。Agent 采用原生对话；素材支持上传和素材库引用。画布统一「素材库」入口，顶层切换「创作素材 / 素材库」：前者以文件夹整理，个人/当前项目作为小范围选择；后者浏览独立资源管理插件，可直接加入画布或存入创作文件夹。不提供团队空间。
 
-首次业务开发时核对并选择项目依赖和包管理器，建立实际可执行的命令后更新本节。只有需要前端构建时才引入对应工具链。
+DSH 0.2.0-rc.2 / Cordis 4.0.5 / React 18。通过 Slots、Primitives、Locale、Typert 和 storageDomain 接入。注册与资源释放随插件生命周期；数据只由 Host 修改，版本冲突不得静默覆盖。只在隔离 DSH_HOME/profile 验证，不修改个人宿主源码/配置。
 
-## 当前项目文档入口
+用户确定的图片/视频配置流程：供应商预设 → 填 Key → 获取最新模型 → 勾选添加，参数按模型能力显示。当前仅接火山方舟（按量计费）与火山 Agent Plan；在同一表单顶部选择供应商，下方随选择切换；Base URL 预填并直接显示，凭证和模型目录按接入方式区分。连接弹窗保存立即落盘，成功前不关闭；已保存密钥不回显，留空保留。费用不要求手填单价，调用用量与实际账单分开表达；公开目录与账号权限分开表达，未知协议不自动视为已支持。目录刷新不自动替换已添加模型与生成快照；原有 preset 只作兼容读取。
 
-- [base 说明](README.md)
-- [官方与社区资料索引](docs/upstream.md)
-- [本地规则与官方来源映射](docs/source-map.md)
-- [文档规范](docs/documentation-standard.md)
-- [已验证范围与后续验收](docs/base-status.md)
-- [Agent 场景验收方法](docs/agent-scenarios.md)
-- [官方资料同步实现记录](docs/tasks/official-skill-sync.md)
+画布无需手型模式切换：空白拖动平移、Shift 拖动框选；普通点击单选、仅 Shift 点击多选。触控板双指平移/捏合缩放；视频单击播放/暂停、双击预览，拖动不触发播放。小地图可收起。选中节点上下操作面板锚定素材，允许裁切，不为面板平移视口或自动避让边缘；上传和添加素材不自动缩放。上栏采用彩色 Pin 标记，不锁定位置。存入创作素材只打开文件夹选择，不自动打开素材库抽屉。画布与素材选择统一沉浸式媒体预览，保持原比例和返回前的浏览状态；只显示实际可读取的媒体信息。
 
-本节目前没有业务需求与架构文档。首次业务任务按需建立并登记；可参考 [项目说明模板](templates/project-brief.md)。
+- npm ci：安装锁定依赖。
+- npm run check：类型检查、测试、构建。
+- npm pack：输出原生可安装包。
+- npm run check:package：核对安装包、Host/Client 和 bundle 入口。
+
+[设计与验证](docs/studio.md)、[文本生成与参考](docs/text-generation.md)、[图片与视频生成](docs/media-generation.md)、[安装说明](README.md)。
