@@ -1,6 +1,6 @@
 {
   "name": "dsh-creative-studio",
-  "version": "0.2.21",
+  "version": "0.2.22",
   "description": "创作：DSH 原生图片与视频创作画布",
   "type": "module",
   "license": "MIT",
@@ -46,9 +46,8 @@
     "typecheck": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json",
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",
-    "prepare": "npm run build",
-    "prepack": "npm run build",
-    "check:package": "node scripts/check-package.mjs"
+    "check:package": "node scripts/check-package.mjs",
+    "pack:release": "npm run build && npm run check:package && npm pack"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",

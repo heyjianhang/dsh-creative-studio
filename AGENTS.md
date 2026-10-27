@@ -42,7 +42,9 @@ DSH 0.2.0-rc.2 / Cordis 4.0.5 / React 18。通过 Slots、Primitives、Locale、
 
 - npm ci：安装锁定依赖。
 - npm run check：类型检查、测试、构建。
-- npm pack：输出原生可安装包。
+- npm run pack:release：构建、检查并生成原生安装包；npm pack 仅打包已有产物。
 - npm run check:package：核对安装包、Host/Client 和 bundle 入口。
 
 [设计与验证](docs/studio.md)、[文本生成与参考](docs/text-generation.md)、[图片与视频生成](docs/media-generation.md)、[安装说明](README.md)。
+
+项目分发约定：lib/ 构建产物随 Git 提交；不得添加 prepare、prepack 等安装生命周期构建钩子。修改运行源码后重建 lib/ 并一同提交，CI 校验产物无差异，避免私有 Git 安装依赖插件构建白名单。
