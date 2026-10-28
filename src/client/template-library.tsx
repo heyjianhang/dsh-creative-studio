@@ -15,7 +15,10 @@ import {
 } from "../shared/template-contracts.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import css from "./studio.module.css";
-import { templateImageSources } from "../shared/template-images.ts";
+import {
+  templateDefaultReferences,
+  templateImageSources,
+} from "../shared/template-images.ts";
 
 function TemplateImage({
   item,
@@ -252,11 +255,7 @@ export function TemplateLibrary({
     }
   };
   const openDetail = (item: PromptTemplate) => {
-    setReferenceUrls(
-      [...new Set(item.referenceImageUrls)]
-        .filter((url) => url !== item.coverUrl)
-        .slice(0, 24),
-    );
+    setReferenceUrls(templateDefaultReferences(item));
     setDetail(item);
   };
   const referenceChoices = detail

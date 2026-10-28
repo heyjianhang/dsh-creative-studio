@@ -13,7 +13,10 @@ import {
   type PromptTemplate,
 } from "../src/shared/contracts.ts";
 import { templateReferenceGraph } from "../src/shared/template-application.ts";
-import { templateImageSources } from "../src/shared/template-images.ts";
+import {
+  templateDefaultReferences,
+  templateImageSources,
+} from "../src/shared/template-images.ts";
 
 const cover = "https://cdn.jsdelivr.net/gh/example/templates/cover.png";
 const reference =
@@ -42,6 +45,28 @@ const media = (name: string): Media => ({
   name,
   mime: "image/png",
   size: png.length,
+});
+
+test("templates with only an example image still bring a reference, while distinct input images take priority", () => {
+  assert.deepEqual(
+    templateDefaultReferences({ coverUrl: cover, referenceImageUrls: [cover] }),
+    [cover],
+  );
+  assert.deepEqual(
+    templateDefaultReferences({ coverUrl: cover, referenceImageUrls: [] }),
+    [cover],
+  );
+  assert.deepEqual(
+    templateDefaultReferences({
+      coverUrl: cover,
+      referenceImageUrls: [cover, reference, reference],
+    }),
+    [reference],
+  );
+  assert.deepEqual(
+    templateDefaultReferences({ coverUrl: "", referenceImageUrls: [] }),
+    [],
+  );
 });
 
 test("selected references become validated local media, connected to the generation target and preserved after graph serialization", async () => {

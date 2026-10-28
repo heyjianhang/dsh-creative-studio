@@ -1,3 +1,18 @@
+import type { PromptTemplate } from "./template-contracts.ts";
+
+export function templateDefaultReferences(
+  template: Pick<PromptTemplate, "coverUrl" | "referenceImageUrls">,
+) {
+  const references = [...new Set(template.referenceImageUrls)].filter(
+    (url) => !!url && url !== template.coverUrl,
+  );
+  return references.length
+    ? references.slice(0, 24)
+    : template.coverUrl
+      ? [template.coverUrl]
+      : [];
+}
+
 export function templateImageSources(value: string) {
   const urls = [value];
   try {
