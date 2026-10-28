@@ -26,6 +26,7 @@ import {
 } from "../shared/contracts.ts";
 import { MediaSettings } from "./media-settings.ts";
 import { VolcCatalog } from "./volc-catalog.ts";
+import { TemplateLibrary } from "./template-library.ts";
 import { MediaGenerations } from "./media-generation.ts";
 import {
   mediaJobSchema,
@@ -195,6 +196,7 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
     });
   const mediaSettings = new MediaSettings(mediaDomain.table("settings"));
   const volcCatalog = new VolcCatalog(join(root, "catalog"));
+  const templates = new TemplateLibrary(join(root, "templates"));
   const mediaGenerations = new MediaGenerations(
     mediaDomain.table("jobs"),
     mediaSettings,
@@ -230,6 +232,12 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
     signal.throwIfAborted();
     const input = endpoints[method].input.parse(raw);
     switch (method) {
+      case "templates":
+        return templates.search(input as Input<"templates">, signal);
+      case "favoriteTemplate": {
+        const r = input as Input<"favoriteTemplate">;
+        return templates.favorite(r.id, r.favorite);
+      }
       case "mediaSettings":
         return mediaSettings.view();
       case "saveMediaSettings":
@@ -579,6 +587,7 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
     for (const j of jobs.values()) j.abort.abort();
     await mediaGenerations.close();
     await volcCatalog.close();
+    await templates.close();
     await mediaDomain.close();
     await generations.close();
     await textDomain.close();

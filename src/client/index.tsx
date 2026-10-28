@@ -193,6 +193,8 @@ export async function apply(ctx: Context) {
         };
         const injected = (): Injected => ({
           hooks: { studio: store },
+          focusNode: (id: string) =>
+            store.set({ ...store.getSnapshot(), focusNodeId: id }),
           request,
           editor,
           refresh,

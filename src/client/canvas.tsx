@@ -48,6 +48,8 @@ import { AssetLibrary } from "./asset-library.tsx";
 import { TextComposer, type ReferencePicking } from "./text-composer.tsx";
 import { MediaComposer } from "./media-composer.tsx";
 import { MediaSettings } from "./media-settings.tsx";
+import { TemplateLibrary } from "./template-library.tsx";
+import { templateNodeData } from "../shared/template-application.ts";
 import { useMediaJobs } from "./media-jobs.ts";
 import {
   GenerationCard,
@@ -304,6 +306,7 @@ function CanvasBody(p: CanvasProps) {
     [assetDraft, setAssetDraft] = useState<Resource[]>(),
     [minimap, setMinimap] = useState(false),
     [help, setHelp] = useState(false),
+    [templatesOpen, setTemplatesOpen] = useState(false),
     [preview, setPreview] = useState<FlowNode | null>(null);
   const [previewStart, setPreviewStart] = useState<number>();
   const [picking, setPicking] = useState<ReferencePicking | null>(null);
@@ -338,6 +341,15 @@ function CanvasBody(p: CanvasProps) {
     setNodes((old) => reconcileNodes(old, project.nodes));
     setEdges((old) => reconcileEdges(old, project.edges));
   }, [project.nodes, project.edges]);
+  useEffect(() => {
+    if (state.focusNodeId)
+      setNodes((old) =>
+        old.map((node) => ({
+          ...node,
+          selected: node.id === state.focusNodeId,
+        })),
+      );
+  }, [state.focusNodeId]);
   useEffect(() => {
     root.current?.focus({ preventScroll: true });
     const fileInput = input.current;
@@ -1114,9 +1126,11 @@ function CanvasBody(p: CanvasProps) {
         <Tool
           label={p.t("templates")}
           icon="grid"
-          onClick={() =>
-            void p.navigate("templates").catch((e) => setError(e.message))
-          }
+          active={templatesOpen}
+          onClick={() => {
+            setMenu(null);
+            setTemplatesOpen(true);
+          }}
         />
         <Tool
           label={p.t("assistant")}
@@ -1209,6 +1223,29 @@ function CanvasBody(p: CanvasProps) {
           </dl>
         </div>
       )}
+      <Modal
+        open={templatesOpen}
+        title={p.t("templates")}
+        closeLabel={p.t("close")}
+        onClose={() => setTemplatesOpen(false)}
+        className={css.templateLibraryDialog}
+        contentClassName={css.templateLibraryDialogContent}
+      >
+        {templatesOpen && (
+          <TemplateLibrary
+            p={p}
+            onUse={async (template) => {
+              add(
+                "image",
+                center(),
+                templateNodeData(p.editor.current!, template),
+              );
+              await p.editor.flush();
+              setTemplatesOpen(false);
+            }}
+          />
+        )}
+      </Modal>
       {!nodes.length && !menu && (
         <div className={css.canvasEmpty}>
           <div>

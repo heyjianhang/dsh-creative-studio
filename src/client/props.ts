@@ -20,6 +20,7 @@ export type State = {
   capabilities?: Output<"capabilities">;
   canUndo: boolean;
   canRedo: boolean;
+  focusNodeId?: string;
 };
 export type Injected = {
   hooks: { studio: HostObservable<State> };
@@ -29,6 +30,7 @@ export type Injected = {
   navigate(page: State["page"]): Promise<void>;
   openProject(id: string): Promise<void>;
   createProject(name: string): Promise<void>;
+  focusNode(id: string): void;
   notify(text: string): void;
   retainAgent(projectId: string): Promise<SessionReference>;
 };

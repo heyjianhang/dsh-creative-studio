@@ -20,6 +20,12 @@ import {
   discoverySchema,
 } from "./media-contracts.ts";
 export * from "./media-contracts.ts";
+import {
+  templateQuerySchema,
+  templateResultSchema,
+  templateId,
+} from "./template-contracts.ts";
+export * from "./template-contracts.ts";
 const id = z.string().uuid();
 export const point = z.object({
   x: z.number().finite(),
@@ -195,6 +201,11 @@ const mediaResult = z.object({
   nextOffset: z.number(),
 });
 export const endpoints = {
+  templates: { input: templateQuerySchema, output: templateResultSchema },
+  favoriteTemplate: {
+    input: z.object({ id: templateId, favorite: z.boolean() }),
+    output: z.array(templateId).max(10000),
+  },
   mediaSettings: { input: z.object({}), output: mediaSettingsViewSchema },
   saveMediaSettings: {
     input: mediaSettingsInputSchema,

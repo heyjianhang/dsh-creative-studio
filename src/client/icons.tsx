@@ -59,6 +59,7 @@ export type IconName =
   | "arrowUp"
   | "stop"
   | "refresh"
+  | "star"
   | "arrow";
 const native = {
   plus: IconPlusOutlineRegular,
@@ -78,6 +79,7 @@ const native = {
   pause: IconPauseOutlineRegular,
 };
 const paths = {
+  star: "m12 3 2.8 5.7 6.3.9-4.5 4.4 1 6.2L12 17.3l-5.6 2.9 1-6.2L3 9.6l6.2-.9z",
   edit: "m15 4 5 5M4 20l5-1L20 8a2.1 2.1 0 0 0-4-4L5 15z",
   text: "M5 5h14M12 5v14M8 19h8",
   image: "M4 4h16v16H4z M4 16l5-5 4 4 3-3 4 4 M15 8h.01",

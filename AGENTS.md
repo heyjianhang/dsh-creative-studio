@@ -42,12 +42,14 @@ DSH 0.2.1-rc.3 / Cordis 4.0.5 / React 18。通过 Slots、Primitives、Locale、
 
 文本、图片、视频的模型选择菜单保持同一设计，不提供模型搜索；名称后显示厂商，下一行显示实际能力。卡片连接点仅悬停、键盘聚焦或连线时显示；保持连接热区与拖到卡片的容错，触屏设备保留可见入口。
 
+模板类型采用图片 / 视频 / 画布，类型下按用途分类；来源、原模型与收藏为筛选维度。用途单行横向滚动，「全部」固定在左；更新为搜索框右侧图标按钮，不重复标题说明与数量日期。图片提示词经 Host 从固定公开目录校验后缓存，收藏独立持久化；模板应用只填提示词，不自动提交生成、不把效果图当参考图，不自动切换模型。没有真实渠道的类型显示明确待接入状态。
+
 - npm ci：安装锁定依赖。
 - npm run check：类型检查、测试、构建。
 - npm run pack:release：构建、检查并生成原生安装包；npm pack 仅打包已有产物。
 - npm run check:package：核对安装包、Host/Client 和 bundle 入口。
 
-[设计与验证](docs/studio.md)、[文本生成与参考](docs/text-generation.md)、[图片与视频生成](docs/media-generation.md)、[安装说明](README.md)。
+[模板库](docs/templates.md)、[设计与验证](docs/studio.md)、[文本生成与参考](docs/text-generation.md)、[图片与视频生成](docs/media-generation.md)、[安装说明](README.md)。
 
 项目分发约定：lib/ 构建产物随 Git 提交；不得添加 prepare、prepack 等安装生命周期构建钩子。修改运行源码后重建 lib/ 并一同提交，CI 校验产物无差异，避免私有 Git 安装依赖插件构建白名单。
 

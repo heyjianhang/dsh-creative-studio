@@ -13,6 +13,8 @@ import type { Project } from "../shared/contracts.ts";
 import { Icon } from "./icons.tsx";
 import { Canvas } from "./canvas.tsx";
 import { MediaView } from "./media.tsx";
+import { TemplateLibrary } from "./template-library.tsx";
+import { templateNodeData } from "../shared/template-application.ts";
 import css from "./studio.module.css";
 export function StudioSurface(p: CanvasProps) {
   const active = p.usePanelInfo(
@@ -199,13 +201,29 @@ export function Page(p: PageProps) {
           </Button>
         </div>
       )}
-      <main className={css.projectContent}>
+      <main className={css.projectContent} key={s.page}>
         {s.page === "templates" ? (
-          <div className={css.empty}>
-            <Icon name="grid" size={38} />
-            <h2>{p.t("templateEmpty")}</h2>
-            <p>{p.t("templateSub")}</p>
-          </div>
+          <TemplateLibrary
+            p={p}
+            onUse={async (template) => {
+              await p.createProject(template.title.slice(0, 120));
+              const project = p.editor.current!;
+              const nodeId = crypto.randomUUID();
+              p.editor.change({
+                ...project,
+                nodes: [
+                  {
+                    id: nodeId,
+                    type: "creative",
+                    position: { x: 180, y: 140 },
+                    data: templateNodeData(project, template),
+                  },
+                ],
+              });
+              p.focusNode(nodeId);
+              await p.editor.flush();
+            }}
+          />
         ) : (
           <>
             <div className={css.projectToolbar}>

@@ -1,6 +1,6 @@
 {
   "name": "dsh-creative-studio",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "description": "创作：DSH 原生图片与视频创作画布",
   "type": "module",
   "license": "MIT",
@@ -21,7 +21,8 @@
     "LICENSE",
     "docs/studio.md",
     "docs/text-generation.md",
-    "docs/media-generation.md"
+    "docs/media-generation.md",
+    "docs/templates.md"
   ],
   "dsh": {
     "bundle": {
