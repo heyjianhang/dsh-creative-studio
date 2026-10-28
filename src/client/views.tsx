@@ -14,7 +14,10 @@ import { Icon } from "./icons.tsx";
 import { Canvas } from "./canvas.tsx";
 import { MediaView } from "./media.tsx";
 import { TemplateLibrary } from "./template-library.tsx";
-import { templateNodeData } from "../shared/template-application.ts";
+import {
+  templateNodeData,
+  templateReferenceGraph,
+} from "../shared/template-application.ts";
 import css from "./studio.module.css";
 export function StudioSurface(p: CanvasProps) {
   const active = p.usePanelInfo(
@@ -205,23 +208,49 @@ export function Page(p: PageProps) {
         {s.page === "templates" ? (
           <TemplateLibrary
             p={p}
-            onUse={async (template) => {
-              await p.createProject(template.title.slice(0, 120));
-              const project = p.editor.current!;
-              const nodeId = crypto.randomUUID();
-              p.editor.change({
-                ...project,
-                nodes: [
+            onUse={async (template, urls) => {
+              const project = await p.request("create", {
+                name: template.title.slice(0, 120),
+              });
+              let saved = false;
+              try {
+                const media = urls.length
+                  ? await p.request("templateMedia", {
+                      projectId: project.id,
+                      id: template.id,
+                      urls,
+                    })
+                  : [];
+                const graph = templateReferenceGraph(
                   {
-                    id: nodeId,
+                    id: crypto.randomUUID(),
                     type: "creative",
-                    position: { x: 180, y: 140 },
+                    position: { x: media.length ? 420 : 180, y: 140 },
                     data: templateNodeData(project, template),
                   },
-                ],
-              });
-              p.focusNode(nodeId);
-              await p.editor.flush();
+                  media,
+                );
+                await p.request("save", {
+                  project: {
+                    ...project,
+                    nodes: graph.nodes,
+                    edges: graph.edges,
+                  },
+                });
+                saved = true;
+                await p.openProject(project.id);
+                p.focusNode(graph.nodeId);
+                await p.refresh();
+              } catch (error) {
+                if (!saved)
+                  await p
+                    .request("removeProject", {
+                      id: project.id,
+                      revision: project.revision,
+                    })
+                    .catch(() => {});
+                throw error;
+              }
             }}
           />
         ) : (

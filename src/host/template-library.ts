@@ -258,6 +258,16 @@ export class TemplateLibrary {
     };
   }
 
+  async get(id: string, signal?: AbortSignal) {
+    templateId.parse(id);
+    await this.initialize();
+    if (!this.snapshot) await this.search({}, signal);
+    signal?.throwIfAborted();
+    const item = this.snapshot?.prompts.find((item) => item.id === id);
+    if (!item) throw new Error("模板已更新或不存在，请刷新模板库");
+    return item;
+  }
+
   async favorite(id: string, favorite: boolean) {
     templateId.parse(id);
     await this.initialize();

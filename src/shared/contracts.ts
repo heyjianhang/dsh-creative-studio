@@ -206,6 +206,14 @@ export const endpoints = {
     input: z.object({ id: templateId, favorite: z.boolean() }),
     output: z.array(templateId).max(10000),
   },
+  templateMedia: {
+    input: z.object({
+      projectId: id,
+      id: templateId,
+      urls: z.array(z.url().max(4000)).max(24),
+    }),
+    output: z.array(mediaSchema).max(24),
+  },
   mediaSettings: { input: z.object({}), output: mediaSettingsViewSchema },
   saveMediaSettings: {
     input: mediaSettingsInputSchema,

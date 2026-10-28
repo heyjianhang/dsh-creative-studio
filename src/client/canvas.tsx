@@ -49,7 +49,10 @@ import { TextComposer, type ReferencePicking } from "./text-composer.tsx";
 import { MediaComposer } from "./media-composer.tsx";
 import { MediaSettings } from "./media-settings.tsx";
 import { TemplateLibrary } from "./template-library.tsx";
-import { templateNodeData } from "../shared/template-application.ts";
+import {
+  templateNodeData,
+  templateReferenceGraph,
+} from "../shared/template-application.ts";
 import { useMediaJobs } from "./media-jobs.ts";
 import {
   GenerationCard,
@@ -1234,12 +1237,38 @@ function CanvasBody(p: CanvasProps) {
         {templatesOpen && (
           <TemplateLibrary
             p={p}
-            onUse={async (template) => {
-              add(
+            onUse={async (template, urls) => {
+              const projectId = p.editor.current!.id;
+              await p.editor.flush();
+              const media = urls.length
+                ? await p.request("templateMedia", {
+                    projectId,
+                    id: template.id,
+                    urls,
+                  })
+                : [];
+              if (p.editor.current?.id !== projectId)
+                throw new Error(p.t("templateCanvasChanged"));
+              const node = add(
                 "image",
                 center(),
                 templateNodeData(p.editor.current!, template),
+                false,
               );
+              const graph = templateReferenceGraph(node, media);
+              const next = [
+                ...nodesRef.current.filter((n) => n.id !== node.id),
+                ...graph.nodes.map((n) => ({
+                  ...n,
+                  selected: n.id === node.id,
+                })),
+              ];
+              const nextEdges = [...edgesRef.current, ...graph.edges];
+              nodesRef.current = next;
+              edgesRef.current = nextEdges;
+              setNodes(next);
+              setEdges(nextEdges);
+              commit(next, nextEdges);
               await p.editor.flush();
               setTemplatesOpen(false);
             }}

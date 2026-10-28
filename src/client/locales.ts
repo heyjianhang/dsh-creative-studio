@@ -34,7 +34,15 @@ export const zh = {
   templateCopy: "复制提示词",
   templateCopied: "提示词已复制",
   templateCopyFailed: "复制失败，请手动选择提示词",
-  templateUseHint: "带入提示词后选择自己的模型生成。如需参考图，请自行添加。",
+  templateUseHint: "使用后可选择模型，并补充自己的参考图。",
+  templateCanvasChanged: "画布已切换，请重新选择模板",
+  templatePreparingImages: "准备参考图…",
+  templateReferences: "参考图",
+  templateUseCover: "效果图作参考",
+  templateReference: "参考图",
+  templateReferencesHint: "选中的图片会带入画布并自动连线。",
+  templateNoReferencesHint: "可上传自己的参考图，或选择效果图作为参考。",
+  templateUseWithReferences: "提示词与选中的参考图将一起带入画布。",
   templateVideoSoon: "视频模板，随后接入",
   templateVideoSoonHint: "运镜、分镜和视频提示词将独立整理在这里。",
   templateCanvasSoon: "画布模板，随后接入",
@@ -481,7 +489,19 @@ export const en: Record<Key, string> = {
   templateCopied: "Prompt copied",
   templateCopyFailed: "Copy failed. Please select the prompt manually.",
   templateUseHint:
-    "Choose your own model after adding the prompt. Add reference images if needed.",
+    "Choose a model and add your own references after applying the template.",
+  templateCanvasChanged:
+    "The canvas changed. Please select the template again.",
+  templatePreparingImages: "Preparing references…",
+  templateReferences: "Reference images",
+  templateUseCover: "Use example image",
+  templateReference: "Reference",
+  templateReferencesHint:
+    "Selected images will be added and connected on the canvas.",
+  templateNoReferencesHint:
+    "Add your own references, or select the example image.",
+  templateUseWithReferences:
+    "The prompt and selected references will be added together.",
   templateVideoSoon: "Video templates are coming",
   templateVideoSoonHint:
     "Camera movements, storyboards and video prompts will live here.",

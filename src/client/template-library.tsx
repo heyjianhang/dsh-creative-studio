@@ -15,6 +15,7 @@ import {
 } from "../shared/template-contracts.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import css from "./studio.module.css";
+import { templateImageSources } from "../shared/template-images.ts";
 
 function TemplateImage({
   item,
@@ -23,15 +24,16 @@ function TemplateImage({
   item: PromptTemplate;
   eager?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
-  return item.coverUrl && !failed ? (
+  const [attempt, setAttempt] = useState(0);
+  const sources = templateImageSources(item.coverUrl);
+  return item.coverUrl && sources[attempt] ? (
     <img
-      src={item.coverUrl}
+      src={sources[attempt]}
       alt={item.title}
       loading={eager ? "eager" : "lazy"}
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
+      onError={() => setAttempt((value) => value + 1)}
     />
   ) : (
     <div className={css.templateImageFallback}>
@@ -84,7 +86,7 @@ export function TemplateLibrary({
   onUse,
 }: {
   p: Shared;
-  onUse(item: PromptTemplate): Promise<void>;
+  onUse(item: PromptTemplate, referenceUrls: string[]): Promise<void>;
 }) {
   const [type, setType] = useState<"image" | "video" | "canvas">("image");
   const [query, setQuery] = useState(""),
@@ -100,6 +102,7 @@ export function TemplateLibrary({
   const [detail, setDetail] = useState<PromptTemplate>(),
     [using, setUsing] = useState(false),
     [favoriteBusy, setFavoriteBusy] = useState<string[]>([]);
+  const [referenceUrls, setReferenceUrls] = useState<string[]>([]);
   const refreshRequested = useRef(false);
   const categoriesRef = useRef<HTMLDivElement>(null);
   const [items, setItems] = useState<PromptTemplate[]>([]);
@@ -240,7 +243,7 @@ export function TemplateLibrary({
   const use = async (item: PromptTemplate) => {
     setUsing(true);
     try {
-      await onUse(item);
+      await onUse(item, referenceUrls);
       setDetail(undefined);
     } catch (e) {
       p.notify((e as Error).message);
@@ -248,6 +251,26 @@ export function TemplateLibrary({
       setUsing(false);
     }
   };
+  const openDetail = (item: PromptTemplate) => {
+    setReferenceUrls(
+      [...new Set(item.referenceImageUrls)]
+        .filter((url) => url !== item.coverUrl)
+        .slice(0, 24),
+    );
+    setDetail(item);
+  };
+  const referenceChoices = detail
+    ? [
+        ...new Set(
+          [
+            ...detail.referenceImageUrls.filter(
+              (url) => url !== detail.coverUrl,
+            ),
+            detail.coverUrl,
+          ].filter(Boolean),
+        ),
+      ].slice(0, 24)
+    : [];
   const activeFilters = !!(
     query ||
     category ||
@@ -465,7 +488,7 @@ export function TemplateLibrary({
               <article key={item.id} className={css.templateCard}>
                 <button
                   className={css.templateOpen}
-                  onClick={() => setDetail(item)}
+                  onClick={() => openDetail(item)}
                   aria-label={`${p.t("templatePreview")} ${item.title}`}
                 >
                   <div className={css.templateCover}>
@@ -581,7 +604,13 @@ export function TemplateLibrary({
                 onClick={() => void use(detail)}
               >
                 <Icon name="plus" size={17} />
-                {p.t(using ? "templateApplying" : "templateUse")}
+                {p.t(
+                  using
+                    ? referenceUrls.length
+                      ? "templatePreparingImages"
+                      : "templateApplying"
+                    : "templateUse",
+                )}
               </Button>
             </>
           )
@@ -589,8 +618,58 @@ export function TemplateLibrary({
       >
         {detail && (
           <div className={css.templateDetail}>
-            <div className={css.templateDetailCover}>
-              <TemplateImage key={detail.id} item={detail} eager />
+            <div className={css.templateDetailVisual}>
+              <div className={css.templateDetailCover}>
+                <TemplateImage key={detail.id} item={detail} eager />
+              </div>
+              {!!referenceChoices.length && (
+                <div className={css.templateReferences}>
+                  <strong>{p.t("templateReferences")}</strong>
+                  <div className={css.templateReferenceStrip}>
+                    {referenceChoices.map((url, index) => (
+                      <button
+                        key={url}
+                        aria-pressed={referenceUrls.includes(url)}
+                        disabled={using}
+                        onClick={() =>
+                          setReferenceUrls((old) =>
+                            old.includes(url)
+                              ? old.filter((item) => item !== url)
+                              : [...old, url],
+                          )
+                        }
+                      >
+                        <span className={css.templateReferenceImage}>
+                          <TemplateImage
+                            key={url}
+                            item={{ ...detail, coverUrl: url }}
+                          />
+                          <i>
+                            <Icon
+                              name={
+                                referenceUrls.includes(url) ? "check" : "plus"
+                              }
+                              size={13}
+                            />
+                          </i>
+                        </span>
+                        <span>
+                          {url === detail.coverUrl
+                            ? p.t("templateUseCover")
+                            : `${p.t("templateReference")} ${index + 1}`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p>
+                    {p.t(
+                      referenceUrls.length
+                        ? "templateReferencesHint"
+                        : "templateNoReferencesHint",
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
             <div className={css.templateDetailBody}>
               <div className={css.templateCredit}>
@@ -640,7 +719,13 @@ export function TemplateLibrary({
                   <span key={tag}>{tag}</span>
                 ))}
               </div>
-              <p className={css.templateUseHint}>{p.t("templateUseHint")}</p>
+              <p className={css.templateUseHint}>
+                {p.t(
+                  referenceUrls.length
+                    ? "templateUseWithReferences"
+                    : "templateUseHint",
+                )}
+              </p>
             </div>
           </div>
         )}

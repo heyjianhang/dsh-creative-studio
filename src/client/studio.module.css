@@ -3839,10 +3839,26 @@
 .templateDetailDialog {
   width: min(1020px, calc(100vw - 48px));
   max-width: none;
+  max-height: 100%;
+}
+.templateDetailDialog > :last-child {
+  flex-shrink: 0;
 }
 .templateDetailContent {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
-  padding-top: 8px;
+  overscroll-behavior: contain;
+}
+.templateDetailContent > :first-child {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.templateDetailContent h2 {
+  overflow-wrap: anywhere;
 }
 .templateDetail {
   display: grid;
@@ -3850,9 +3866,12 @@
   align-items: start;
   gap: 28px;
 }
-.templateDetailCover {
+.templateDetailVisual {
   position: sticky;
-  top: 0;
+  top: 70px;
+  min-width: 0;
+}
+.templateDetailCover {
   min-width: 0;
   border-radius: 12px;
   background: var(--dsw-alias-bg-module-platform);
@@ -3861,8 +3880,78 @@
 .templateDetailCover img {
   display: block;
   width: 100%;
-  max-height: 60vh;
+  max-height: 45vh;
   object-fit: contain;
+}
+.templateReferences {
+  margin-top: 18px;
+  min-width: 0;
+}
+.templateReferences > strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.templateReferences > p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
+}
+.templateReferenceStrip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 10px 2px 4px;
+}
+.templateReferenceStrip button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  flex: 0 0 82px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.templateReferenceStrip button:disabled {
+  cursor: wait;
+}
+.templateReferenceImage {
+  position: relative;
+  height: 68px;
+  overflow: hidden;
+  border-radius: 9px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-module-platform);
+}
+.templateReferenceImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.templateReferenceImage i {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 19px;
+  height: 19px;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 50%;
+}
+.templateReferenceStrip button[aria-pressed="true"] .templateReferenceImage {
+  border-color: var(--dsw-alias-label-primary);
+  box-shadow: 0 0 0 1px var(--dsw-alias-label-primary);
+}
+.templateReferenceStrip button[aria-pressed="true"] {
+  color: var(--dsw-alias-label-primary);
 }
 .templateDetailBody {
   min-width: 0;
@@ -3941,9 +4030,12 @@
   width: min(1180px, calc(100vw - 48px));
   max-width: none;
   height: min(88vh, 960px);
+  max-height: 100%;
 }
 .templateLibraryDialogContent {
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 .templateLibraryDialog .templateTypeRow {
   padding-top: 6px;
@@ -3972,7 +4064,7 @@
     grid-template-columns: 1fr;
     gap: 20px;
   }
-  .templateDetailCover {
+  .templateDetailVisual {
     position: static;
   }
   .templateDetailCover img {
