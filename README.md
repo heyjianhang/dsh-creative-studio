@@ -1,6 +1,6 @@
 # 创作 · DSH Creative Studio
 
-DSH 原生创作画布插件，包名 `dsh-creative-studio`。当前开发版本 `0.2.25`；以下远程固定安装链接仍指向已发布的 `v0.2.24`，模板库更新目前使用本地构建包预览。
+DSH 原生创作画布插件，包名 `dsh-creative-studio`。当前版本 `0.2.26`，包含模板参考图导入及生成错误提示修复；未发布到 npm。
 
 ## 已实现
 
@@ -39,8 +39,8 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。当前开发版本
 
 在 DSH「插件 → 添加插件」中输入以下任一来源：
 
-- GitHub：`https://github.com/heyjianhang/dsh-creative-studio.git`。仓库现已公开，可直接使用；推荐固定版本：`https://github.com/heyjianhang/dsh-creative-studio.git#v0.2.24`。
-- 本机安装包：构建好的 `dsh-creative-studio-0.2.25.tgz` 的绝对路径。
+- GitHub：`https://github.com/heyjianhang/dsh-creative-studio.git`。仓库现已公开，可直接使用；推荐固定版本：`https://github.com/heyjianhang/dsh-creative-studio.git#v0.2.26`。
+- 本机安装包：构建好的 `dsh-creative-studio-0.2.26.tgz` 的绝对路径。
 - 本机源码目录：先执行 `npm ci && npm run check`，再填写仓库绝对路径。
 
 仓库已提交构建好的 `lib/`，Git 安装直接使用 Host/Client 产物，不执行本插件的构建脚本，也不需要为插件添加 `allowBuilds`。包尚未发布到 npm，不能直接填裸包名 `dsh-creative-studio`。
@@ -48,7 +48,7 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。当前开发版本
 CLI 安装本地包：
 
 ```sh
-dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.25.tgz
+dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.26.tgz
 ```
 
 图形安装器安装后默认启用 bundle，侧栏出现「创作」。CLI `add` 安装依赖后还需在插件页启用；自行管理 profile 时将 `dsh-creative-studio` 加入 `dsh.profile.bundles`。本机 tarball 已在隔离 profile 安装加载；远程 Git 安装验证见[验证记录](docs/studio.md)。Windows 安装尚未实机验证。

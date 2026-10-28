@@ -189,6 +189,7 @@ export const mediaJobSchema = z.object({
         "configuration",
         "permission",
         "rate-limit",
+        "moderation",
         "provider",
       ]),
       code: z.string().max(100),

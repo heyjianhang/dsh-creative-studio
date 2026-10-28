@@ -151,6 +151,65 @@ export function buildMediaPayload(job: MediaJob, images: string[]) {
     ...(p.seed >= 0 ? { seed: p.seed } : {}),
   };
 }
+export function providerFailure(
+  base: string,
+  key: string,
+  rawCode: unknown,
+  status?: number,
+  requestId?: string | null,
+) {
+  const code = String(rawCode ?? status ?? "UnknownError")
+    .replaceAll(key, "[redacted]")
+    .slice(0, 100);
+  const plan = new URL(base).pathname.startsWith("/api/plan/");
+  const provider = plan ? "火山Agent Plan" : "火山方舟";
+  const moderated =
+    /^(Input|Output)(Text|Image|Video|Audio)(SensitiveContentDetected|RiskDetection)(\.|$)/.exec(
+      code,
+    );
+  const subject = moderated
+    ? (moderated[1] === "Output" ? "生成的" : "输入的") +
+      ({ Text: "文字", Image: "图片", Video: "视频", Audio: "音频" }[
+        moderated[2]!
+      ] ?? "内容")
+    : "";
+  const hint = moderated
+    ? `${subject}未通过${provider}内容审核，请调整提示词或参考素材后再试`
+    : status === 401 || code === "AuthenticationError"
+      ? `${provider}鉴权失败，请确认填写的是${plan ? "Agent Plan 专属" : "方舟按量计费"} Key；两种 Key 不能互用`
+      : code.includes("ModelIDAccessDisabled")
+        ? "当前模型不支持直接使用模型 ID，请配置已开通的 ep- 接入点"
+        : code === "ModelNotOpen"
+          ? "账号尚未开通这个模型，请先在火山控制台开通"
+          : status === 403
+            ? "没有模型权限或套餐额度不可用"
+            : status === 404
+              ? `${provider}未找到模型或当前账号无权访问，请核对模型 ID、接入点与开通权限`
+              : status === 429
+                ? "请求过于频繁或额度不足"
+                : status !== undefined && status >= 500
+                  ? "供应商服务暂时异常"
+                  : "请检查模型参数与参考素材";
+  return new ProviderError(`${hint}（${code}）`, false, {
+    kind: moderated
+      ? "moderation"
+      : status === 401 || code === "AuthenticationError"
+        ? "authentication"
+        : status === 403 || code === "ModelNotOpen"
+          ? "permission"
+          : status === 404
+            ? "configuration"
+            : status === 429
+              ? "rate-limit"
+              : "provider",
+    code,
+    status,
+    requestId:
+      requestId && !requestId.includes(key) && /^[\w.-]{1,160}$/.test(requestId)
+        ? requestId
+        : undefined,
+  });
+}
 export async function providerJSON(
   base: string,
   path: string,
@@ -189,52 +248,20 @@ export async function providerJSON(
     );
   }
   if (!response.ok || data.error) {
-    const code = String(data.error?.code ?? response.status)
-      .replaceAll(key, "[redacted]")
-      .slice(0, 100);
-    const plan = new URL(base).pathname.startsWith("/api/plan/");
-    const provider = plan ? "火山Agent Plan" : "火山方舟";
-    const hint =
-      response.status === 401 || code === "AuthenticationError"
-        ? `${provider}鉴权失败，请确认填写的是${plan ? "Agent Plan 专属" : "方舟按量计费"} Key；两种 Key 不能互用`
-        : code.includes("ModelIDAccessDisabled")
-          ? "当前模型不支持直接使用模型 ID，请配置已开通的 ep- 接入点"
-          : code === "ModelNotOpen"
-            ? "账号尚未开通这个模型，请先在火山控制台开通"
-            : response.status === 403
-              ? "没有模型权限或套餐额度不可用"
-              : response.status === 404
-                ? `${provider}未找到模型或当前账号无权访问，请核对模型 ID、接入点与开通权限`
-                : response.status === 429
-                  ? "请求过于频繁或额度不足"
-                  : response.status >= 500
-                    ? "供应商服务暂时异常"
-                    : "请检查模型参数与参考素材";
+    const error = providerFailure(
+      base,
+      key,
+      data.error?.code,
+      response.status,
+      response.headers.get("x-request-id") ??
+        response.headers.get("x-tt-logid"),
+    );
     throw new ProviderError(
-      `${hint}（${code}）`,
-      method === "POST" && response.status >= 500,
-      {
-        kind:
-          response.status === 401 || code === "AuthenticationError"
-            ? "authentication"
-            : response.status === 403 || code === "ModelNotOpen"
-              ? "permission"
-              : response.status === 404
-                ? "configuration"
-                : response.status === 429
-                  ? "rate-limit"
-                  : "provider",
-        code,
-        status: response.status,
-        requestId: (() => {
-          const value =
-            response.headers.get("x-request-id") ??
-            response.headers.get("x-tt-logid");
-          return value && value !== key && /^[\w.-]{1,160}$/.test(value)
-            ? value
-            : undefined;
-        })(),
-      },
+      error.message,
+      method === "POST" &&
+        response.status >= 500 &&
+        error.failure?.kind !== "moderation",
+      error.failure,
     );
   }
   return data;

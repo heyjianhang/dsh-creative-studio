@@ -14,6 +14,7 @@ import { framesOf, mediaReferenceIds } from "../shared/media-reference.ts";
 import {
   buildMediaPayload,
   providerJSON,
+  providerFailure,
   ProviderError,
   validateMediaTarget,
 } from "./media-provider.ts";
@@ -433,6 +434,8 @@ export class MediaGenerations {
         );
         if (j.kind === "image") {
           const result = response.data?.[0];
+          if (result?.error)
+            throw providerFailure(c.baseUrl, c.apiKey, result.error.code);
           j.resultUrl = result?.url;
           j.usage = normalizeMediaUsage(response.usage);
           if (result?.b64_json) {
@@ -489,12 +492,14 @@ export class MediaGenerations {
           if (["failed", "cancelled", "expired"].includes(data.status)) {
             j.remoteId = undefined;
             j.submitted = false;
+            if (data.error?.code)
+              throw providerFailure(c.baseUrl, c.apiKey, data.error.code);
             throw new Error(
-              `视频任务${data.status === "failed" ? "失败" : data.status === "expired" ? "已过期" : "已取消"}（${String(
-                data.error?.code ?? data.status,
-              )
-                .replaceAll(c.apiKey, "[redacted]")
-                .slice(0, 100)}）`,
+              data.status === "failed"
+                ? "视频任务失败"
+                : data.status === "expired"
+                  ? "视频任务已过期"
+                  : "视频任务已取消",
             );
           }
           j.stage = data.status === "queued" ? "供应商排队中" : "生成视频中";

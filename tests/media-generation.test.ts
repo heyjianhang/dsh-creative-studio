@@ -15,6 +15,7 @@ import {
   buildMediaPayload,
   imageSize,
   providerJSON,
+  providerFailure,
   ProviderError,
   validateMediaTarget,
 } from "../src/host/media-provider.ts";
@@ -284,6 +285,56 @@ test("provider authentication errors identify the lane and retain only safe requ
       ),
     /无权访问/,
   );
+});
+
+test("content moderation failures identify the rejected input or output without leaking provider messages", async () => {
+  const key = "private-moderation-key";
+  for (const mode of ["native", "plan"] as const) {
+    for (const [code, label] of [
+      ["OutputImageSensitiveContentDetected", "生成的图片"],
+      ["InputImageSensitiveContentDetected", "输入的图片"],
+      ["InputTextSensitiveContentDetected.PolicyViolation", "输入的文字"],
+      ["OutputVideoSensitiveContentDetected", "生成的视频"],
+      ["InputVideoRiskDetection", "输入的视频"],
+    ]) {
+      await assert.rejects(
+        providerJSON(
+          mediaProviders[mode].baseUrl,
+          "/images/generations",
+          key,
+          new AbortController().signal,
+          {},
+          "POST",
+          (async () =>
+            Response.json(
+              { error: { code, message: key } },
+              {
+                status: 400,
+                headers: { "x-request-id": "moderation-request-123" },
+              },
+            )) as typeof fetch,
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof ProviderError);
+          assert.match(error.message, new RegExp(label + "未通过"));
+          assert.match(error.message, /内容审核/);
+          assert.equal(error.message.includes(key), false);
+          assert.equal(error.uncertain, false);
+          assert.equal(error.failure?.kind, "moderation");
+          assert.equal(error.failure?.requestId, "moderation-request-123");
+          assert.equal(error.failure?.code, code);
+          return true;
+        },
+      );
+      const taskError = providerFailure(
+        mediaProviders[mode].baseUrl,
+        key,
+        code,
+      );
+      assert.equal(taskError.failure?.kind, "moderation");
+      assert.equal(taskError.uncertain, false);
+    }
+  }
 });
 
 test("invalid legacy IDs fail on the card before any paid request is submitted", async () => {
@@ -624,6 +675,39 @@ test("video task IDs are persisted before polling; restart resumes without anoth
   assert.equal(f.saved.length, 1);
   assert.equal([...f.rows.values()][0]!.usage?.completion_tokens, 55);
   await second.close();
+});
+
+test("video terminal states without provider codes retain the correct failure reason", async () => {
+  for (const [status, expected] of [
+    ["failed", "视频任务失败"],
+    ["expired", "视频任务已过期"],
+    ["cancelled", "视频任务已取消"],
+  ]) {
+    const f = await fixture("video");
+    let posts = 0;
+    const jobs = new MediaGenerations(
+      f.table,
+      f.settings,
+      reader,
+      f.save,
+      (async (_url, init) => {
+        if (init?.method === "POST") {
+          posts++;
+          return Response.json({ id: "terminal-task" });
+        }
+        return Response.json({ status });
+      }) as typeof fetch,
+      1,
+    );
+    try {
+      await jobs.start(f.project, "node", randomUUID());
+      await until(() => [...f.rows.values()][0]?.status === "failed");
+      assert.equal([...f.rows.values()][0]?.error, expected);
+      assert.equal(posts, 1);
+    } finally {
+      await jobs.close();
+    }
+  }
 });
 
 test("ambiguous submissions are not automatically retried, including after restart", async () => {
