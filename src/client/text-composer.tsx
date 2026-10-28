@@ -319,7 +319,7 @@ export function TextComposer({
           <Menu
             open={modelOpen}
             onClose={() => setModelOpen(false)}
-            listClassName={css.textModelMenu}
+            listClassName={`${css.textModelMenu} ${css.mediaModelMenu}`}
             side="top"
             align="start"
             portal
@@ -334,7 +334,7 @@ export function TextComposer({
                 aria-haspopup="menu"
                 aria-expanded={modelOpen}
               >
-                <Icon name="sparkle" size={18} />
+                <Icon name="sparkle" size={20} />
                 <span>
                   {model?.name ||
                     selection?.model ||

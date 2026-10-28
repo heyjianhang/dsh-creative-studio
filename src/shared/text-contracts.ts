@@ -24,6 +24,8 @@ export const textModelSchema = modelSelectionSchema.extend({
   name: z.string(),
   providerName: z.string(),
   images: z.enum(["yes", "no", "unknown"]),
+  contextWindow: z.number().int().positive().optional(),
+  defaultMaxTokens: z.number().int().positive().optional(),
 });
 export const modelCatalogSchema = z.object({
   models: z.array(textModelSchema),

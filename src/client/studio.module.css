@@ -364,7 +364,7 @@
   color: var(--dsw-alias-label-tertiary);
   display: grid;
   place-items: center;
-  opacity: .65;
+  opacity: 0;
   z-index: 6;
   transition: opacity 120ms, color 120ms;
 }
@@ -376,8 +376,17 @@
 .canvas :global(.react-flow__handle.connectingto) { color: var(--dsw-alias-label-primary); opacity: 1; }
 .canvas :global(.react-flow__handle.connectingto)::before { box-shadow: 0 0 0 6px var(--dsw-alias-interactive-bg-hover); }
 .contentNode:hover :global(.react-flow__handle),
-.contentNode[data-selected="true"] :global(.react-flow__handle) {
+.contentNode:has(:focus-visible) :global(.react-flow__handle),
+.canvas :global(.react-flow__node:focus-visible) .contentNode :global(.react-flow__handle),
+.contentNode[data-connecting="true"] :global(.react-flow__handle) {
   opacity: 1;
+}
+@media (hover: none) {
+  .contentNode :global(.react-flow__handle) { opacity: 1; }
+}
+.canvas .contentNode[data-reference-mode="true"] :global(.react-flow__handle) {
+  opacity: 0;
+  pointer-events: none;
 }
 .contentNode {
   box-sizing: border-box;
@@ -2978,20 +2987,6 @@
   min-width: 300px;
   max-width: min(380px, calc(100vw - 32px));
 }
-.modelSearch {
-  padding: 6px;
-}
-.modelSearchInput.modelSearchInput {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-.modelSearch input {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-}
 .modelOptions {
   max-height: 300px;
   overflow-y: auto;
@@ -3328,8 +3323,8 @@
 .mediaComposer .promptEditorWrap, .mediaComposer .promptEditor { min-height:84px; }
 .mediaComposer .composerFooter { padding-top:10px; gap:8px; }
 .mediaComposer .composerModel { gap:6px; }
-.mediaComposer .modelTrigger { max-width:240px; padding:7px 9px; font-weight:600; gap:9px; }
-.mediaComposer .modelTrigger > svg:last-child { display:none; }
+.textComposer .modelTrigger { max-width:240px; padding:7px 9px; font-weight:600; gap:9px; }
+.textComposer .modelTrigger > svg:last-child { display:none; }
 .mediaComposer .mediaParameterTrigger { display:flex; align-items:center; gap:6px; max-width:290px; font-size:12px; min-height:34px; padding:7px 9px; border-radius:11px; color:var(--dsw-alias-label-primary); }
 .mediaComposer .mediaParameterTrigger[aria-expanded="true"] { background:var(--dsw-alias-bg-module-platform); }
 .mediaParameterMenu.mediaParameterMenu { width:min(342px,calc(100vw - 32px)); padding:16px; border-radius:20px; }
@@ -3353,11 +3348,11 @@
 .mediaComposer .cardGeneration { border:0; border-radius:12px; padding:9px 11px; margin-top:5px; background:var(--dsw-alias-bg-module-platform); max-height:104px; font-size:11px; }
 .mediaComposer .cardJobLine > button { min-height:26px; padding:3px 8px; }
 .mediaModelMenu.mediaModelMenu { width:310px; max-width:calc(100vw - 32px); padding:6px; border-radius:19px; }
-.mediaModelMenu .modelSearch { margin-bottom:4px; }
 .mediaModelMenu .modelRow { padding:12px; border-radius:13px; min-height:64px; align-items:center; }
 .mediaModelMenu .modelRow[aria-checked="true"] { background:var(--dsw-alias-interactive-bg-active); }
 .mediaModelOption { display:flex; flex-direction:column; gap:6px; min-width:0; }
 .mediaModelName { display:flex; align-items:center; gap:8px; min-width:0; }
+.mediaModelName > svg { flex-shrink:0; color:var(--dsw-alias-label-secondary); }
 .mediaModelName strong { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; }
 .mediaModelBadges { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
 .mediaModelBadges small { display:flex; align-items:center; border-radius:10px; padding:2px 6px; background:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent); color:var(--dsw-alias-label-secondary); font-size:10px; line-height:15px; }

@@ -5,11 +5,17 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Button, Input } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { ModelCatalog, ModelSelection } from "../shared/contracts.ts";
 import type { Shared } from "./props.ts";
 import { Icon } from "./icons.tsx";
 import css from "./studio.module.css";
+
+function tokenCount(value: number) {
+  if (value >= 1_000_000) return `${+(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${+(value / 1_000).toFixed(1)}K`;
+  return String(value);
+}
 
 export function TextModelPicker({
   catalog,
@@ -18,8 +24,6 @@ export function TextModelPicker({
   onSelect,
   onRetry,
   renderModel,
-  searchPlaceholder,
-  searchable = true,
 }: {
   catalog?: ModelCatalog;
   selection?: ModelSelection;
@@ -27,32 +31,20 @@ export function TextModelPicker({
   onSelect(value: ModelSelection): void;
   onRetry(): void;
   renderModel?(model: NonNullable<ModelCatalog>["models"][number]): ReactNode;
-  searchPlaceholder?: string;
-  searchable?: boolean;
 }) {
-  const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
-  const search = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const models =
-    catalog?.models.filter((m) =>
-      `${m.name} ${m.providerName} ${m.model}`
-        .toLocaleLowerCase()
-        .includes(query.trim().toLocaleLowerCase()),
-    ) ?? [];
+  const models = catalog?.models ?? [];
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      if (searchable) search.current?.focus();
-      else {
-        const index = models.findIndex(
-          (m) =>
-            m.provider === selection?.provider && m.model === selection?.model,
-        );
-        const item = list.current?.children[Math.max(0, index)] as
-          HTMLElement | undefined;
-        item?.focus({ preventScroll: true });
-        item?.scrollIntoView({ block: "nearest" });
-      }
+      const index = models.findIndex(
+        (m) =>
+          m.provider === selection?.provider && m.model === selection?.model,
+      );
+      const item = list.current?.children[Math.max(0, index)] as
+        HTMLElement | undefined;
+      item?.focus({ preventScroll: true });
+      item?.scrollIntoView({ block: "nearest" });
     });
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -78,31 +70,10 @@ export function TextModelPicker({
       e.preventDefault();
       e.stopPropagation();
       onSelect(models[active < 0 ? 0 : active]);
-    } else if (
-      e.target === search.current &&
-      e.key !== "Escape" &&
-      e.key !== "Tab"
-    )
-      e.stopPropagation();
+    }
   };
   return (
     <div onKeyDownCapture={keydown}>
-      {searchable && (
-        <div className={css.modelSearch}>
-          <Input
-            className={css.modelSearchInput}
-            ref={search}
-            icon={<Icon name="search" size={16} />}
-            value={query}
-            placeholder={searchPlaceholder ?? p.t("searchModels")}
-            aria-label={searchPlaceholder ?? p.t("searchModels")}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActive(-1);
-            }}
-          />
-        </div>
-      )}
       <div className={css.modelOptions} ref={list}>
         {models.map((m, i) => (
           <Button
@@ -123,24 +94,42 @@ export function TextModelPicker({
               {renderModel ? (
                 renderModel(m)
               ) : (
-                <>
-                  <strong>{m.name}</strong>
-                  <small>
-                    {m.providerName}
-                    {m.images === "yes" ? ` · ${p.t("supportsImages")}` : ""}
-                  </small>
-                </>
+                <span className={css.mediaModelOption}>
+                  <span className={css.mediaModelName}>
+                    <Icon name="sparkle" size={21} />
+                    <strong>{m.name}</strong>
+                    <small className={css.mediaModelProvider}>
+                      {m.providerName}
+                    </small>
+                  </span>
+                  {(m.images === "yes" ||
+                    m.contextWindow ||
+                    m.defaultMaxTokens) && (
+                    <span className={css.mediaModelBadges}>
+                      {m.images === "yes" && (
+                        <small>{p.t("supportsImages")}</small>
+                      )}
+                      {m.contextWindow && (
+                        <small>
+                          {p.t("modelContext")} {tokenCount(m.contextWindow)}
+                        </small>
+                      )}
+                      {m.defaultMaxTokens && (
+                        <small>
+                          {p.t("modelDefaultOutput")}{" "}
+                          {tokenCount(m.defaultMaxTokens)}
+                        </small>
+                      )}
+                    </span>
+                  )}
+                </span>
               )}
             </span>
             {m.provider === selection?.provider &&
               m.model === selection?.model && <Icon name="check" size={16} />}
           </Button>
         ))}
-        {!models.length && (
-          <p>
-            {p.t(!catalog ? "opening" : query ? "noSearch" : "modelMissing")}
-          </p>
-        )}
+        {!models.length && <p>{p.t(!catalog ? "opening" : "modelMissing")}</p>}
       </div>
       {!!catalog?.failures.length && (
         <Button className={css.retryModels} onClick={onRetry}>

@@ -428,7 +428,6 @@ export function MediaComposer({
             {modelOpen && (
               <TextModelPicker
                 p={p}
-                searchable={false}
                 renderModel={(item) => {
                   const entry = catalog?.models.find(
                     (m) => m.id === item.model,

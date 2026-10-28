@@ -2,7 +2,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-llm";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 import type {} from "@deepseek-ai/dsh-attachment";
-import type { ContentBlock } from "@deepseek-ai/dsh-llm";
+import type { ContentBlock, LlmResolvedModelInfo } from "@deepseek-ai/dsh-llm";
 import type {
   ImageAttachmentRef,
   SaveImageAttachment,
@@ -36,6 +36,16 @@ const chunkSchema = z.object({
   size: z.number(),
   nextOffset: z.number(),
 });
+function modelMetrics(model: LlmResolvedModelInfo) {
+  const positive = (value?: number) =>
+    value !== undefined && Number.isSafeInteger(value) && value > 0
+      ? value
+      : undefined;
+  return {
+    contextWindow: positive(model.context?.contextWindow),
+    defaultMaxTokens: positive(model.defaultMaxTokens),
+  };
+}
 export function textMessages(
   snapshot: TextSnapshot,
   index: number,
@@ -138,6 +148,29 @@ export class TextRuntime {
         failures.push("DSH 默认模型暂不可用");
       }
     }
+    // Optional adapter metadata must not hide models or hold up the selector.
+    const metadataSignal = AbortSignal.timeout(2500);
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(4, models.length) }, async () => {
+        while (!metadataSignal.aborted) {
+          const model = models[next++];
+          if (!model) return;
+          try {
+            const detail = await withSignal(metadataSignal, () =>
+              ctx.llm.resolveModelInfo(
+                model.provider,
+                model.model,
+                metadataSignal,
+              ),
+            );
+            Object.assign(model, modelMetrics(detail));
+          } catch {
+            // Keep catalog identity and known input capabilities on lookup failure.
+          }
+        }
+      }),
+    );
     return {
       models,
       default:
@@ -165,6 +198,7 @@ export class TextRuntime {
       ...selection,
       name: m.name,
       providerName: provider.name,
+      ...modelMetrics(m),
       images: m.inputModalities
         ? m.inputModalities.includes("image")
           ? "yes"

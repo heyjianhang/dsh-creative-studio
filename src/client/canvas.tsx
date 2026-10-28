@@ -10,6 +10,7 @@ import {
   applyNodeChanges,
   applyEdgeChanges,
   useReactFlow,
+  useConnection,
   type Node,
   type Edge,
   type NodeProps,
@@ -88,6 +89,7 @@ const NodeContext = createContext<{
   expand(id: string, start: number): void;
 } | null>(null);
 function ContentNode({ id, data, selected }: NodeProps<FlowNode>) {
+  const connecting = useConnection((connection) => connection.inProgress);
   const c = useContext(NodeContext)!;
   const refState = c.referenceState(id);
   const jobs = c.jobs(id),
@@ -106,6 +108,7 @@ function ContentNode({ id, data, selected }: NodeProps<FlowNode>) {
     <div
       className={css.contentNode}
       data-selected={selected}
+      data-connecting={connecting}
       data-generating={inProgress}
       data-media-node={data.kind !== "text"}
       data-reference-mode={!!refState}

@@ -475,3 +475,69 @@ test("DSH adapter resolves the selected model and passes real image attachments 
   assert.match(JSON.stringify(calls), /"model":"vision"/);
   assert.equal(context.agentDefaultModel.currentSelection().model, "default");
 });
+
+test("text catalog exposes real adapter metrics and retains models with missing or failed metadata", async () => {
+  const context = {
+    inject: (_: string[], fn: (ctx: unknown) => unknown) => fn(context),
+    agentDefaultModel: {
+      currentSelection: () => ({ provider: "native", model: "vision" }),
+    },
+    llm: {
+      listProviders: () => [{ id: "native", name: "DSH provider" }],
+      listModels: async () => [
+        { id: "vision", name: "Vision", inputModalities: ["text", "image"] },
+        { id: "plain", name: "Plain", inputModalities: ["text"] },
+        { id: "unavailable", name: "Unavailable" },
+      ],
+      resolveModelInfo: async (_: string, id: string) => {
+        if (id === "unavailable")
+          throw new Error("private adapter diagnostics");
+        return {
+          provider: "native",
+          id,
+          name: id,
+          ...(id === "vision"
+            ? {
+                context: { contextWindow: 1_048_576 },
+                defaultMaxTokens: 32_768,
+                reasoning: {
+                  efforts: [
+                    { id: "low", name: "Low" },
+                    { id: "high", name: "High" },
+                  ],
+                },
+              }
+            : {}),
+        };
+      },
+      stream: () => {
+        throw new Error("catalog must not generate");
+      },
+    },
+  };
+  const runtime = new TextRuntime(context as never, async () => {
+    throw new Error("catalog must not read media");
+  });
+  const catalog = await runtime.catalog();
+  assert.deepEqual(catalog.models[0], {
+    provider: "native",
+    providerName: "DSH provider",
+    model: "vision",
+    name: "Vision",
+    images: "yes",
+    contextWindow: 1_048_576,
+    defaultMaxTokens: 32_768,
+  });
+  assert.equal(catalog.models[1].images, "no");
+  assert.equal(catalog.models[1].contextWindow, undefined);
+  assert.equal(catalog.models[1].defaultMaxTokens, undefined);
+  assert.equal(catalog.models[2].model, "unavailable");
+  assert.equal(catalog.models[2].images, "unknown");
+  assert.deepEqual(catalog.failures, []);
+  assert.doesNotMatch(JSON.stringify(catalog), /private adapter diagnostics/);
+  assert.equal(
+    (await runtime.info({ provider: "native", model: "vision" }))
+      .defaultMaxTokens,
+    32_768,
+  );
+});

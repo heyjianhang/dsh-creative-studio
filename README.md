@@ -1,6 +1,6 @@
 # 创作 · DSH Creative Studio
 
-DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.23`。
+DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.24`。
 
 ## 已实现
 
@@ -19,6 +19,7 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.23`。
 - 下载先准备原文件，再确认文件名并保存；支持浏览器原生保存选择器时可选择位置。无该能力的浏览器使用其下载设置决定位置；只在原生写入完成后提示已保存，浏览器接管时明确提示已交给浏览器。
 - 创作素材加号提供「上传 / 从素材库添加 / 新建文件夹」，上传后选择目标文件夹，批量保存。素材库页签直接浏览独立插件资源，点击直接加入画布，Shift 点击或勾选可批量「添加到画布」或「存入创作素材」。AI 默认开启，复用原索引，支持请求取消、失败回退、类型和库筛选、方向键导航与空格预览。
 - 文本节点的正文与生成指令独立编辑；底部悬浮面板选择 DSH 已配置模型和 1–4 个结果，支持流式查看、停止、重试及正文历史恢复。
+- 文本、图片与视频使用统一模型菜单，厂商紧随模型名称；文本模型按实际元数据展示图片输入、上下文与默认输出。卡片连接点在悬停、键盘聚焦或连线时出现。
 - 从画布选择文字/图片参考，或在指令中通过 `@` 插入引用芯片。未被 `@` 点名的参考仍会发送；不支持的节点置灰。第一份结果写回原节点，其余方案另建节点；生成期间修改正文时保留修改，结果另建节点。
 - 项目独立的 DSH 原生 Agent 对话面板，复用模型、附件、授权和会话机制。
 - 跟随 DSH 主题；原生导航、设置入口及中英文文案。
@@ -37,8 +38,8 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.23`。
 
 在 DSH「插件 → 添加插件」中输入以下任一来源：
 
-- GitHub：`https://github.com/heyjianhang/dsh-creative-studio.git`。仓库现已公开，可直接使用；推荐固定版本：`https://github.com/heyjianhang/dsh-creative-studio.git#v0.2.23`。
-- 本机安装包：构建好的 `dsh-creative-studio-0.2.23.tgz` 的绝对路径。
+- GitHub：`https://github.com/heyjianhang/dsh-creative-studio.git`。仓库现已公开，可直接使用；推荐固定版本：`https://github.com/heyjianhang/dsh-creative-studio.git#v0.2.24`。
+- 本机安装包：构建好的 `dsh-creative-studio-0.2.24.tgz` 的绝对路径。
 - 本机源码目录：先执行 `npm ci && npm run check`，再填写仓库绝对路径。
 
 仓库已提交构建好的 `lib/`，Git 安装直接使用 Host/Client 产物，不执行本插件的构建脚本，也不需要为插件添加 `allowBuilds`。包尚未发布到 npm，不能直接填裸包名 `dsh-creative-studio`。
@@ -46,7 +47,7 @@ DSH 原生创作画布插件，包名 `dsh-creative-studio`。版本 `0.2.23`。
 CLI 安装本地包：
 
 ```sh
-dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.23.tgz
+dsh plugin --profile YOUR_PROFILE add /absolute/path/dsh-creative-studio-0.2.24.tgz
 ```
 
 图形安装器安装后默认启用 bundle，侧栏出现「创作」。CLI `add` 安装依赖后还需在插件页启用；自行管理 profile 时将 `dsh-creative-studio` 加入 `dsh.profile.bundles`。本机 tarball 已在隔离 profile 安装加载；远程 Git 安装验证见[验证记录](docs/studio.md)。Windows 安装尚未实机验证。
