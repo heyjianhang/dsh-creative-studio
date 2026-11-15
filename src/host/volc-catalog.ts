@@ -138,11 +138,34 @@ export function parseVolcDocuments(
     throw new Error("官方参数文档格式发生变化");
   const native = new Map<
     string,
-    DiscoveredModel & { family: string; summary: string }
+    DiscoveredModel & {
+      kind: "image" | "video";
+      family: string;
+      summary: string;
+    }
   >();
+  const embeddings = new Map<string, DiscoveredModel>();
   for (const row of rows(docs.native)) {
     const cells = row.map(text),
       summary = cells.slice(1).join(" ");
+    if (
+      /多模态向量化/.test(summary) &&
+      /文本/.test(summary) &&
+      /图片/.test(summary)
+    ) {
+      for (const id of modelIds(row[0] ?? "").filter((id) =>
+        /^doubao-embedding-vision(?:-[a-z\d.-]+)?$/i.test(id),
+      ))
+        embeddings.set(id, {
+          model: id,
+          name: id
+            .replace(/^doubao-embedding-vision-?/i, "Doubao Embedding Vision ")
+            .trim(),
+          kind: "embedding",
+          retiring: /即将下线|已下线/.test(cells[0]!),
+        });
+      continue;
+    }
     const kind = /文生视频/.test(summary)
       ? "video"
       : /文生图/.test(summary)
@@ -307,7 +330,7 @@ export function parseVolcDocuments(
       mode: "native",
       source: "official",
       fetchedAt,
-      models: nativeModels,
+      models: [...nativeModels, ...embeddings.values()],
     }),
     plan: discoverySchema.parse({
       mode: "plan",
@@ -319,6 +342,7 @@ export function parseVolcDocuments(
   if (
     !result.native.models.some((m) => m.capabilities?.kind === "image") ||
     !result.native.models.some((m) => m.capabilities?.kind === "video") ||
+    !embeddings.size ||
     !result.plan.models.some((m) => m.capabilities)
   )
     throw new Error("未能识别官方参数，请继续使用上次的目录");
@@ -401,12 +425,18 @@ export class VolcCatalog {
     signal.throwIfAborted();
     this.closed.signal.throwIfAborted();
     const cached = await this.read();
+    const compatibleCache =
+      cached &&
+      (mode === "plan" ||
+        cached.native.models.some((m) => m.kind === "embedding"))
+        ? cached[mode]
+        : undefined;
     if (
       !refresh &&
-      cached &&
-      Date.now() - Date.parse(cached[mode].fetchedAt) < 3600000
+      compatibleCache &&
+      Date.now() - Date.parse(compatibleCache.fetchedAt) < 3600000
     )
-      return { ...structuredClone(cached[mode]), source: "cache" };
+      return { ...structuredClone(compatibleCache), source: "cache" };
     this.pending ??= this.refresh().finally(() => {
       this.pending = undefined;
     });
@@ -426,9 +456,9 @@ export class VolcCatalog {
     } catch (e) {
       signal.throwIfAborted();
       this.closed.signal.throwIfAborted();
-      if (cached)
+      if (compatibleCache)
         return {
-          ...structuredClone(cached[mode]),
+          ...structuredClone(compatibleCache),
           source: "cache",
           warning: "refreshFailed",
         };

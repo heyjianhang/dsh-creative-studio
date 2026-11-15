@@ -11,11 +11,12 @@ import type { Editor } from "./editor.ts";
 export type { Request } from "../shared/contracts.ts";
 import type { Request } from "../shared/contracts.ts";
 export type State = {
-  page: "projects" | "templates";
+  page: "projects" | "assets" | "templates";
   projects: Project[];
   current?: Project;
   status: "saved" | "saving" | "error";
   error?: string;
+  conflict?: boolean;
   notice?: string;
   capabilities?: Output<"capabilities">;
   canUndo: boolean;
@@ -32,10 +33,11 @@ export type Injected = {
   createProject(name: string): Promise<void>;
   focusNode(id: string): void;
   notify(text: string): void;
-  retainAgent(projectId: string): Promise<SessionReference>;
+  openSettings(): void;
+  renderLibrary(): import("react").ReactNode;
 };
 export type Shared = PropsLocale<"creative-studio"> & InjectFace<Injected>;
-export type PageProps = PropsRuntime<"main"> & Shared;
-export type CanvasProps = PropsRuntime<"shell.overlay"> &
-  PropsRenderSlots<"creative.agent"> &
-  Shared;
+export type PageProps = Shared & {
+  workbench?: import("@actvero/dsh-capability-ui/client/contracts").WorkbenchClientContext;
+};
+export type CanvasProps = PageProps;

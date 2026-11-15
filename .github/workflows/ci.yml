@@ -14,11 +14,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check out ACTVERO workbench toolchain
+        uses: actions/checkout@v4
+        with:
+          repository: actvero/actvero-harness
+          ref: 678c68d0f1e7cbbbf1f4bf97817b4a6de89c532d
+          path: .actvero-host
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
           cache: npm
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          version: 11.28.5
+      - name: Build ACTVERO workbench types
+        working-directory: .actvero-host
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build:artifacts
       - run: npm ci
+      - run: npm run bind:workbench -- .actvero-host
       - run: npm run check
       - name: Verify committed runtime artifacts
         run: git diff --exit-code -- lib

@@ -5,6 +5,18 @@
     "fetchedAt": "2026-10-27T06:25:28.775Z",
     "models": [
       {
+        "model": "doubao-embedding-vision-251215",
+        "name": "Doubao Embedding Vision 251215",
+        "kind": "embedding",
+        "retiring": false
+      },
+      {
+        "model": "doubao-embedding-vision-250615",
+        "name": "Doubao Embedding Vision 250615",
+        "kind": "embedding",
+        "retiring": true
+      },
+      {
         "model": "doubao-seedance-2-5-260628",
         "name": "Seedance 2.5",
         "kind": "video",

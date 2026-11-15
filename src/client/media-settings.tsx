@@ -7,6 +7,7 @@ import {
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import {
   mediaProviders,
+  supportsArkEmbedding,
   type MediaProviderId,
   validateProviderRoute,
 } from "../shared/media-providers.ts";
@@ -202,7 +203,8 @@ export function MediaSettings(p: Shared & { initialConnection?: string }) {
                   <small>
                     {c.mode === "plan" ? "Agent Plan" : p.t("volcNative")}
                     <span>·</span>
-                    {c.models.length} {p.t("modelsCount")}
+                    {c.models.length + (c.embeddingModels?.length ?? 0)}{" "}
+                    {p.t("modelsCount")}
                   </small>
                 </span>
               </Button>
@@ -240,7 +242,7 @@ export function MediaSettings(p: Shared & { initialConnection?: string }) {
                     {p.t("addMediaModels")}
                   </Button>
                 </div>
-                {c.models.length === 0 && (
+                {c.models.length === 0 && !c.embeddingModels?.length && (
                   <div className={css.modelsEmpty}>
                     <Icon name="image" size={22} />
                     <span>{p.t("noConfiguredModels")}</span>
@@ -296,6 +298,51 @@ export function MediaSettings(p: Shared & { initialConnection?: string }) {
                     )
                   );
                 })}
+                {!!c.embeddingModels?.length && (
+                  <div className={css.configModelGroup}>
+                    <h4>{p.t("embedding")}</h4>
+                    {c.embeddingModels.map((m) => (
+                      <div className={css.mediaModelConfig} key={m.id}>
+                        <div className={css.modelConfigTitle}>
+                          <span className={css.configModelIcon}>
+                            <Icon name="embedding" size={17} />
+                          </span>
+                          <span className={css.modelIdentity}>
+                            <strong>{m.name}</strong>
+                            <small title={m.model}>{m.model}</small>
+                          </span>
+                        </div>
+                        <Toggle
+                          checked={m.enabled}
+                          label={`${p.t("enableModel")} · ${m.name}`}
+                          onChange={(enabled) =>
+                            connection(c.id, {
+                              embeddingModels: c.embeddingModels?.map(
+                                (entry) =>
+                                  entry.id === m.id
+                                    ? { ...entry, enabled }
+                                    : entry,
+                              ),
+                            })
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          className={css.mediaIconAction}
+                          aria-label={`${p.t("removeModel")} · ${m.name}`}
+                          onClick={() =>
+                            connection(c.id, {
+                              embeddingModels: c.embeddingModels?.filter(
+                                (entry) => entry.id !== m.id,
+                              ),
+                            })
+                          }
+                          icon={<Icon name="trash" size={15} />}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </article>
@@ -428,14 +475,18 @@ export function MediaSettings(p: Shared & { initialConnection?: string }) {
         <MediaModelPicker
           p={p}
           mode={selectedConnection.mode}
-          added={selectedConnection.models.filter((m) => m.id !== replacing)}
+          allowEmbedding={supportsArkEmbedding(selectedConnection)}
+          added={[
+            ...selectedConnection.models.filter((m) => m.id !== replacing),
+            ...(selectedConnection.embeddingModels ?? []),
+          ]}
           replacing={selectedConnection.models.find((m) => m.id === replacing)}
           onClose={() => {
             setPicker(undefined);
             setReplacing(undefined);
           }}
-          onAdd={async (models) => {
-            if (!config || !models.length) return;
+          onAdd={async (models, embeddings) => {
+            if (!config || (!models.length && !embeddings.length)) return;
             const existing = new Set(
               selectedConnection.models.map((m) => m.model),
             );
@@ -464,7 +515,14 @@ export function MediaSettings(p: Shared & { initialConnection?: string }) {
               ...config,
               connections: config.connections.map((c) =>
                 c.id === selectedConnection.id
-                  ? { ...c, models: nextModels }
+                  ? {
+                      ...c,
+                      models: nextModels,
+                      embeddingModels: [
+                        ...(c.embeddingModels ?? []),
+                        ...embeddings,
+                      ],
+                    }
                   : c,
               ),
               defaultImage:
@@ -656,6 +714,7 @@ function ConnectionEditor({
               mode: nextMode,
               baseUrl: mediaProviders[nextMode].baseUrl,
               models: [],
+              embeddingModels: [],
             }),
     );
     setError("");

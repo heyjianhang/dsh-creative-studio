@@ -8,3 +8,4 @@ declare module "@xyflow/react/dist/base.css" {
   export default css;
 }
 declare module "*.svg" { const url: string; export default url; }
+declare module "*.jpg" { const url: string; export default url; }

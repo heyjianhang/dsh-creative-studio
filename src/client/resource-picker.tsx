@@ -1,7 +1,7 @@
+import { CollectionSearch, CollectionTypes } from "./collection-ui.tsx";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Button,
-  Input,
   Menu,
   Modal,
   Tooltip,
@@ -15,21 +15,25 @@ import {
   resourceName,
 } from "./asset-shared.tsx";
 import { MediaPreview } from "./media-preview.tsx";
-import { AssetHoverPreview, useAssetHover } from "./asset-hover.tsx";
+import { SaveToLibrary } from "./save-to-library.tsx";
 import { downloadMedia } from "./media-source.ts";
 import { Icon } from "./icons.tsx";
 import css from "./studio.module.css";
+import { FolderBrowser } from "../asset-library/client/folder-browser.tsx";
+import { useBrowseScroll } from "../asset-library/client/browse-scroll.ts";
 
-interface ResourceBrowserProps {
+const mediaKinds = ["all", "image", "video"] as const;
+
+type ResourceBrowserProps = {
   p: CanvasProps;
   onClose(): void;
-  onSelect(refs: Resource[]): void;
   limit?: number;
-  embedded?: boolean;
   visible?: boolean;
-  onAdd?(refs: Resource[]): void;
   selectionVersion?: number;
-}
+} & (
+  | { embedded: true; onAdd(refs: Resource[]): void; onSelect?: never }
+  | { embedded?: false; onAdd?: never; onSelect(refs: Resource[]): void }
+);
 
 export function ResourcePicker(props: ResourceBrowserProps) {
   return <ResourceBrowser {...props} />;
@@ -41,7 +45,7 @@ export function ResourceBrowser({
   onSelect,
   onAdd,
   limit = 100,
-  embedded = false,
+  embedded,
   visible = true,
   selectionVersion = 0,
 }: ResourceBrowserProps) {
@@ -49,8 +53,11 @@ export function ResourceBrowser({
   const [query, setQuery] = useState(""),
     [ai, setAi] = useState(true),
     [composing, setComposing] = useState(false);
+  const [folderId, setFolderId] = useState<string>();
+  const resultsElement = useRef<HTMLDivElement>(null);
+  const searching = !!query.trim();
   const [libraryId, setLibraryId] = useState("all"),
-    [kind, setKind] = useState<"all" | "image" | "video">("all");
+    [kind, setKind] = useState<(typeof mediaKinds)[number]>("all");
   const [info, setInfo] = useState<Output<"libraryInfo">>();
   const [result, setResult] = useState<Output<"searchLibrary">>();
   const [busy, setBusy] = useState(true),
@@ -65,15 +72,48 @@ export function ResourceBrowser({
   }>();
   const [signature, setSignature] = useState("");
   const search = useRef<HTMLInputElement>(null),
-    grid = useRef<HTMLDivElement>(null),
-    pointer = useRef({ x: NaN, y: NaN });
-  const key = JSON.stringify([query.trim(), ai, libraryId, kind, refresh]);
+    grid = useRef<HTMLDivElement>(null);
+  const key = JSON.stringify([
+    query.trim(),
+    ai,
+    libraryId,
+    folderId,
+    kind,
+    refresh,
+  ]);
   const stale = key !== signature;
   const rows = stale ? [] : (result?.hits ?? []);
+  const browseCache = useRef<{
+    scope: string;
+    result: Output<"searchLibrary"> | undefined;
+    signature: string;
+    offset: number;
+  }>();
+  const browseScope = `${libraryId}:${folderId ?? ""}:${kind}:${ai}:${refresh}`;
+  function changeQuery(value: string) {
+    if (!searching && value.trim())
+      browseCache.current = { scope: browseScope, result, signature, offset };
+    setQuery(value);
+    if (!value.trim() && browseCache.current?.scope === browseScope) {
+      setResult(browseCache.current.result);
+      setSignature(browseCache.current.signature);
+      setOffset(browseCache.current.offset);
+    } else setOffset(0);
+  }
   const chosen = Object.values(selected);
+  const selectionOrder = new Map(
+    Object.keys(selected).map((id, index) => [id, index + 1]),
+  );
+  const folders = (info?.folders ?? []).filter(
+    (folder) => libraryId === "all" || folder.libraryId === libraryId,
+  );
+  const onBrowseScroll = useBrowseScroll(
+    resultsElement,
+    `${libraryId}:${folderId ?? ""}`,
+    searching,
+    !stale && !busy,
+  );
   const [menu, setMenu] = useState<string>();
-  const assetHover = useAssetHover(visible && !preview && !menu && !stale);
-  useEffect(() => assetHover.dismiss(), [key]);
   useEffect(() => setSelected({}), [selectionVersion]);
   useEffect(() => {
     if (!visible) return;
@@ -117,6 +157,7 @@ export function ResourceBrowser({
               ai,
               kind,
               libraryId: libraryId === "all" ? undefined : libraryId,
+              collectionId: folderId,
               offset,
               limit: 24,
             },
@@ -163,14 +204,14 @@ export function ResourceBrowser({
       return next;
     });
   }
+  const activeIndex = () =>
+    rows.findIndex((r) => resourceKey({ kind: r.kind, asset: r }) === active);
   const closePreview = () => {
     setPreview(undefined);
-    requestAnimationFrame(() =>
-      (
-        grid.current?.querySelector<HTMLElement>(`[data-active="true"]`) ??
-        search.current
-      )?.focus(),
-    );
+    requestAnimationFrame(() => {
+      const card = grid.current?.children[activeIndex()];
+      (card instanceof HTMLElement ? card : search.current)?.focus();
+    });
   };
   function keydown(e: KeyboardEvent) {
     if (
@@ -189,26 +230,26 @@ export function ResourceBrowser({
       e.preventDefault();
       e.stopPropagation();
       if (query) {
-        setQuery("");
-        setOffset(0);
+        changeQuery("");
       } else if (chosen.length) setSelected({});
       else onClose();
       return;
     }
-    const input = (e.target as Element).closest("input,textarea");
+    const inSearch = e.target === search.current;
+    const inGrid =
+      e.target instanceof Element && grid.current?.contains(e.target);
+    if (!inSearch && !inGrid) return;
     if (
       (e.key === "ArrowDown" ||
         e.key === "ArrowUp" ||
-        (!input && ["ArrowLeft", "ArrowRight"].includes(e.key))) &&
+        (inGrid && ["ArrowLeft", "ArrowRight"].includes(e.key))) &&
       rows.length &&
       !busy
     ) {
       e.preventDefault();
       e.stopPropagation();
-      const i = rows.findIndex(
-        (r) => resourceKey({ kind: r.kind, asset: r }) === active,
-      );
-      const columns = 1;
+      const i = activeIndex();
+      const columns = 2;
       const delta =
         e.key === "ArrowDown"
           ? columns
@@ -224,13 +265,11 @@ export function ResourceBrowser({
       card?.focus({ preventScroll: true });
       card?.scrollIntoView({ block: "nearest" });
     } else if (
-      !input &&
+      inGrid &&
       !(e.target as Element).closest("button") &&
       [" ", "Enter"].includes(e.key)
     ) {
-      const row = rows.find(
-        (r) => resourceKey({ kind: r.kind, asset: r }) === active,
-      );
+      const row = rows[activeIndex()];
       if (!row) return;
       e.preventDefault();
       e.stopPropagation();
@@ -239,105 +278,133 @@ export function ResourceBrowser({
           resource: { kind: row.kind, asset: row },
           start: row.start ?? undefined,
         });
-      else if (embedded && onAdd && !e.shiftKey)
-        onAdd([{ kind: row.kind, asset: row }]);
       else toggle({ kind: row.kind, asset: row });
     }
   }
   const footer = (
     <>
       <span className={css.librarySelectionCount} aria-live="polite">
-        {chosen.length ? `${chosen.length} ${p.t("selected")}` : ""}
+        {p.t("selected")} {chosen.length}
       </span>
       {embedded ? (
-        <Button disabled={!chosen.length} onClick={() => setSelected({})}>
-          {p.t("clearSelection")}
-        </Button>
+        <>
+          <SaveToLibrary p={p} projectId={projectId} resources={chosen} />
+          <Tooltip label={p.t("clearSelection")} portal>
+            <Button
+              aria-label={p.t("clearSelection")}
+              disabled={!chosen.length}
+              onClick={() => setSelected({})}
+            >
+              <Icon name="close" size={16} />
+            </Button>
+          </Tooltip>
+        </>
       ) : (
         <Button onClick={onClose}>{p.t("cancel")}</Button>
       )}
-      <div className={css.resourceFooterActions}>
-        {embedded && (
-          <Button disabled={!chosen.length} onClick={() => onSelect(chosen)}>
-            {p.t("saveSelection")}
-          </Button>
-        )}
-        <Button
-          variant="primary"
-          disabled={!chosen.length}
-          onClick={() => (embedded ? onAdd?.(chosen) : onSelect(chosen))}
-        >
-          {p.t(embedded ? "addAsset" : "next")}
-        </Button>
-      </div>
+      <Button
+        variant="primary"
+        disabled={!chosen.length}
+        onClick={() => (embedded ? onAdd(chosen) : onSelect(chosen))}
+      >
+        {p.t(embedded ? "addAsset" : "next")}
+      </Button>
     </>
   );
   const content = (
-    <div data-studio-assets className={css.resourceBrowser} onKeyDown={keydown}>
-      <AssetHoverPreview p={p} hover={assetHover} />
-      <div className={css.librarySearch}>
-        <Input
-          ref={search}
-          className={css.libraryInput}
-          icon={<Icon name="search" size={18} />}
-          value={query}
-          maxLength={300}
-          placeholder={p.t(ai ? "semanticSearchHint" : "searchAssets")}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOffset(0);
-          }}
-          onCompositionStart={() => setComposing(true)}
-          onCompositionEnd={() => setComposing(false)}
-        />
-        <Tooltip label={p.t(ai ? "aiSearchOn" : "aiSearchOff")}>
-          <Button
-            className={css.libraryAI}
-            data-active={ai}
-            aria-label={p.t(ai ? "aiSearchOn" : "aiSearchOff")}
-            aria-pressed={ai}
-            onClick={() => {
-              setAi(!ai);
-              setOffset(0);
-              search.current?.focus();
-            }}
-          >
-            <Icon name="sparkle" size={21} />
-          </Button>
-        </Tooltip>
-      </div>
+    <div
+      data-studio-assets
+      data-embedded={embedded || undefined}
+      className={css.resourceBrowser}
+      onKeyDown={keydown}
+    >
+      <CollectionSearch
+        ref={search}
+        className={css.resourceSearch}
+        value={query}
+        maxLength={300}
+        aria-label={p.t("searchAssets")}
+        placeholder={p.t(ai ? "semanticSearchHint" : "searchAssets")}
+        onChange={(e) => changeQuery(e.target.value)}
+        onCompositionStart={() => setComposing(true)}
+        onCompositionEnd={() => setComposing(false)}
+        clearLabel={p.t("clearSearch")}
+        onClear={() => changeQuery("")}
+        actions={
+          <Tooltip label={p.t(ai ? "aiSearchOn" : "aiSearchOff")}>
+            <Button
+              aria-label={p.t(ai ? "aiSearchOn" : "aiSearchOff")}
+              aria-pressed={ai}
+              onClick={() => {
+                setAi(!ai);
+                setOffset(0);
+                search.current?.focus();
+              }}
+            >
+              <Icon name="sparkle" size={18} />
+            </Button>
+          </Tooltip>
+        }
+      />
       <div className={css.libraryFilters}>
-        <LibrarySelect
-          label={p.t("selectLibrary")}
-          value={libraryId}
-          options={[
-            { id: "all", label: p.t("allLibraries") },
-            ...(info?.libraries
-              .filter((l) => l.available)
-              .map((l) => ({ id: l.id, label: l.name })) ?? []),
-          ]}
-          onChange={(value) => {
-            setLibraryId(value);
-            setOffset(0);
-          }}
-        />
-        <LibrarySelect
-          label={p.t("mediaType")}
+        {(info?.libraries.filter((library) => library.available).length ?? 0) >
+          1 && (
+          <LibrarySelect
+            label={p.t("selectLibrary")}
+            value={libraryId}
+            options={[
+              { id: "all", label: p.t("allLibraries") },
+              ...(info?.libraries
+                .filter((l) => l.available)
+                .map((l) => ({ id: l.id, label: l.name })) ?? []),
+            ]}
+            onChange={(value) => {
+              setLibraryId(value);
+              setFolderId(undefined);
+              setOffset(0);
+            }}
+          />
+        )}
+        {embedded ? (
+          <>
+            <LibrarySelect
+              folder
+              label={p.t("folders")}
+              value={folderId ?? "all"}
+              options={[
+                { id: "all", label: p.t("allAssets") },
+                ...folders.map(({ id, name }) => ({ id, label: name })),
+              ]}
+              onChange={(id) => {
+                setFolderId(id === "all" ? undefined : id);
+                setOffset(0);
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <span className={css.resourceCount}>
+              {!stale && !busy
+                ? `${result?.total ?? 0} ${p.t("assetResults")}`
+                : ""}
+            </span>
+          </>
+        )}
+        <CollectionTypes
           value={kind}
-          options={(["all", "image", "video"] as const).map((id) => ({
-            id,
-            label: p.t(id),
-          }))}
+          label={p.t("mediaType")}
+          options={mediaKinds.map((value) => ({ value, label: p.t(value) }))}
           onChange={(value) => {
-            setKind(value as typeof kind);
+            setKind(value);
             setOffset(0);
           }}
         />
-        {(libraryId !== "all" || kind !== "all") && (
+        {!embedded && (libraryId !== "all" || kind !== "all") && (
           <Button
             className={css.libraryReset}
             onClick={() => {
               setLibraryId("all");
+              setFolderId(undefined);
               setKind("all");
               setOffset(0);
             }}
@@ -346,7 +413,30 @@ export function ResourceBrowser({
           </Button>
         )}
       </div>
-      <div className={css.resourceResults}>
+      <div
+        ref={resultsElement}
+        className={css.resourceResults}
+        onScroll={onBrowseScroll}
+      >
+        {!embedded && !searching && (
+          <FolderBrowser
+            folders={folders}
+            currentId={folderId}
+            rootLabel={p.t("allAssets")}
+            label={p.t("folders")}
+            onNavigate={(id) => {
+              setFolderId(id);
+              setOffset(0);
+            }}
+          />
+        )}
+        {!embedded && searching && (
+          <p className={css.resourceSearchScope}>
+            {p.t("searchWithin")} ·{" "}
+            {folders.find((folder) => folder.id === folderId)?.name ??
+              p.t("allAssets")}
+          </p>
+        )}
         {error ? (
           <div className={css.libraryEmpty} role="alert">
             <p>{error}</p>
@@ -377,79 +467,52 @@ export function ResourceBrowser({
                   )}
                 </div>
               )}
-            <div ref={grid} className={css.resourceList} aria-busy={busy}>
+            <div
+              ref={grid}
+              className={`${css.resourceList} ${css.resourceThumbnails}`}
+              aria-busy={busy}
+            >
               {stale
                 ? Array.from({ length: 6 }, (_, i) => (
                     <div key={i} className={css.resourceListSkeleton}>
                       <div />
-                      <span />
+                      {!embedded && <span />}
                     </div>
                   ))
                 : rows.map((hit) => {
                     const resource: Resource = { kind: hit.kind, asset: hit },
                       id = resourceKey(resource);
-                    const show = (anchor: HTMLElement) =>
-                      assetHover.enter(anchor, {
-                        id,
-                        resource,
-                        name: hit.name,
-                        start: hit.start ?? undefined,
-                        applyLabel: embedded ? undefined : p.t("next"),
-                        onApply: () =>
-                          embedded && onAdd
-                            ? onAdd([resource])
-                            : onSelect([resource]),
-                        onExpand: () =>
-                          setPreview({
-                            resource,
-                            start: hit.start ?? undefined,
-                          }),
-                      });
                     return (
                       <div
                         key={id}
                         className={`${css.creativeAssetRow} ${css.resourceListRow}`}
-                        data-active={active === id || menu === id}
+                        data-active={menu === id}
+                        data-selected={!!selected[id] || undefined}
                         tabIndex={0}
                         aria-label={hit.name}
+                        title={embedded ? hit.name : undefined}
                         onFocus={() => setActive(id)}
-                        onPointerEnter={(e) => {
-                          if (e.pointerType !== "touch") show(e.currentTarget);
-                        }}
-                        onPointerLeave={assetHover.leave}
-                        onPointerMove={(e) => {
-                          if (
-                            !menu &&
-                            e.pointerType !== "touch" &&
-                            (pointer.current.x !== e.clientX ||
-                              pointer.current.y !== e.clientY)
-                          ) {
-                            pointer.current = { x: e.clientX, y: e.clientY };
-                            setActive(id);
-                            show(e.currentTarget);
-                          }
-                        }}
-                        onClick={(event) => {
-                          assetHover.dismiss();
-                          if (embedded && !event.shiftKey && onAdd)
-                            onAdd([resource]);
-                          else toggle(resource);
+                        onClick={() => {
+                          toggle(resource);
                         }}
                       >
                         <AssetThumbnail p={p} resource={resource} />
-                        <span>{hit.name}</span>
+                        {!embedded && <span>{hit.name}</span>}
                         <Button
                           className={css.resourceListCheck}
-                          aria-label={p.t("selected")}
+                          aria-label={`${p.t("select")} · ${hit.name}`}
                           aria-pressed={!!selected[id]}
                           onClick={(e) => {
                             e.stopPropagation();
-                            assetHover.dismiss();
                             toggle(resource);
                           }}
                         >
                           {selected[id] ? (
-                            <Icon name="check" size={16} />
+                            embedded ? (
+                              selectionOrder.get(id)
+                            ) : (
+                              <Icon name="check" size={16} />
+                            )
                           ) : (
                             <span className={css.resourceUnchecked} />
                           )}
@@ -468,7 +531,6 @@ export function ResourceBrowser({
                                 aria-haspopup="menu"
                                 aria-expanded={menu === id}
                                 onClick={() => {
-                                  assetHover.dismiss();
                                   setActive(id);
                                   setMenu(menu === id ? undefined : id);
                                 }}
@@ -482,15 +544,6 @@ export function ResourceBrowser({
                                 label: p.t("previewAsset"),
                                 icon: <Icon name="fit" />,
                               },
-                              ...(embedded
-                                ? [
-                                    {
-                                      id: "save",
-                                      label: p.t("saveSelection"),
-                                      icon: <Icon name="folder" />,
-                                    },
-                                  ]
-                                : []),
                               {
                                 id: "download",
                                 label: p.t("download"),
@@ -504,7 +557,6 @@ export function ResourceBrowser({
                                   resource,
                                   start: hit.start ?? undefined,
                                 });
-                              else if (action === "save") onSelect([resource]);
                               else
                                 void downloadMedia(p.request, projectId, {
                                   ...resource,
@@ -520,12 +572,15 @@ export function ResourceBrowser({
                     );
                   })}
             </div>
-            {!stale && !busy && !rows.length && (
-              <div className={css.libraryEmpty}>
-                <Icon name="search" size={28} />
-                <strong>{p.t("noAssets")}</strong>
-              </div>
-            )}
+            {!stale &&
+              !busy &&
+              !rows.length &&
+              (embedded || searching || !!folderId || !folders.length) && (
+                <div className={css.libraryEmpty}>
+                  <Icon name="search" size={28} />
+                  <strong>{p.t("noAssets")}</strong>
+                </div>
+              )}
             {!stale && rows.length < (result?.total ?? 0) && (
               <Button
                 className={css.libraryMore}
@@ -538,9 +593,7 @@ export function ResourceBrowser({
           </>
         )}
       </div>
-      {embedded && chosen.length > 0 && (
-        <div className={css.resourceBrowserFooter}>{footer}</div>
-      )}
+      {embedded && <div className={css.resourceBrowserFooter}>{footer}</div>}
       {preview && (
         <MediaPreview
           p={p}
@@ -560,14 +613,7 @@ export function ResourceBrowser({
                 }
               : undefined
           }
-          onSave={
-            embedded
-              ? () => {
-                  onSelect([preview.resource]);
-                  setPreview(undefined);
-                }
-              : undefined
-          }
+          saveToLibrary={embedded}
         />
       )}
     </div>

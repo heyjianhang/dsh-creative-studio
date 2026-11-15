@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Menu } from "@deepseek-ai/dsh-client-ui-primitives";
+import { CollectionSelect } from "./collection-ui.tsx";
 import type {
   CreativeAsset,
   CreativeAssetDraft,
+  CreativeNode,
   Resource,
 } from "../shared/contracts.ts";
 import type { Shared } from "./props.ts";
@@ -15,6 +16,15 @@ export const resourceKey = (r: Resource) =>
     ? `media:${r.media.id}`
     : JSON.stringify([r.asset!.libraryId, r.asset!.id]);
 export const resourceName = (r: Resource) => (r.media ?? r.asset)!.name;
+export function nodeResource({
+  kind,
+  media,
+  asset,
+}: CreativeNode["data"]): Resource | undefined {
+  if (kind === "text") return undefined;
+  if (media) return { kind, media };
+  if (asset) return { kind, asset };
+}
 export const uniqueResources = (refs: Resource[]) => [
   ...new Map(refs.map((r) => [resourceKey(r), r])).values(),
 ];
@@ -79,37 +89,22 @@ export function LibrarySelect({
   value,
   options,
   onChange,
+  folder = false,
 }: {
   label: string;
   value: string;
   options: { id: string; label: string }[];
   onChange(id: string): void;
+  folder?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <Menu
-      portal
-      open={open}
-      onClose={() => setOpen(false)}
-      selectedId={value}
-      listClassName={css.librarySelectMenu}
-      anchor={
-        <Button
-          className={css.librarySelect}
-          aria-label={label}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          <span>{options.find((o) => o.id === value)?.label ?? label}</span>
-          <Icon name="down" size={15} />
-        </Button>
-      }
-      items={options.map((o) => ({ ...o }))}
-      onSelect={(id) => {
-        onChange(id);
-        setOpen(false);
-      }}
+    <CollectionSelect
+      compact
+      label={label}
+      value={value}
+      options={options}
+      onChange={onChange}
+      icon={folder ? <Icon name="folder" size={15} /> : undefined}
     />
   );
 }

@@ -43,6 +43,15 @@ function documents(
         "720p 时长: 4~12 秒",
       ],
       ["doubao-text-model", "文本生成 视觉理解"],
+      ["doubao-embedding-text", "仅支持文本向量化"],
+      [
+        "doubao-embedding-vision-251215",
+        "多模态向量化 支持视频、文本、图片输入",
+      ],
+      [
+        "doubao-embedding-vision-250615 即将下线",
+        "多模态向量化 支持视频、文本、图片输入",
+      ],
     ]),
     plan:
       table([
@@ -73,7 +82,16 @@ const bundled = new URL("../resources/volc-catalog.json", import.meta.url);
 
 test("discovers exact native and Plan IDs with different aliases, actual ranges and unadapted models", () => {
   const data = parseVolcDocuments(documents(), stamp);
-  assert.equal(data.native.models.length, 3);
+  assert.equal(data.native.models.length, 5);
+  assert.deepEqual(
+    data.native.models
+      .filter((m) => m.kind === "embedding")
+      .map((m) => [m.model, m.retiring]),
+    [
+      ["doubao-embedding-vision-251215", false],
+      ["doubao-embedding-vision-250615", true],
+    ],
+  );
   assert.equal(data.plan.models.length, 2);
   assert.equal(data.native.models[0]!.model, "doubao-seedream-5-0-pro-261027");
   assert.equal(data.plan.models[1]!.model, "doubao-seedance-2.5");
@@ -210,7 +228,7 @@ test("first offline start labels bundled data and malformed fresh documents cann
     );
     assert.equal(data.source, "bundled");
     assert.equal(data.warning, "refreshFailed");
-    assert.ok(data.models.length > 0);
+    assert.ok(data.models.some((m) => m.kind === "embedding"));
     await assert.rejects(readFile(join(root, "volc-models.json")), /ENOENT/);
     await service.close();
   }));
@@ -294,7 +312,7 @@ test("router JSON Markdown response is parsed without executing scripts, includi
   const html = documents();
   const docs = {
     native: payload(
-      "|模型|能力|规格|\n|---|---|---|\n|[doubao-seedream-5-0-pro-261027](https://ark.volcengine.com/model?Id=doubao-seedream-5-0-pro)|文生图||\n|[doubao-seedance-2-5-261027](https://ark.volcengine.com/model?Id=doubao-seedance-2-5)|文生视频|480p 720p 时长: 4~30 秒|",
+      "|模型|能力|规格|\n|---|---|---|\n|[doubao-seedream-5-0-pro-261027](https://ark.volcengine.com/model?Id=doubao-seedream-5-0-pro)|文生图||\n|[doubao-seedance-2-5-261027](https://ark.volcengine.com/model?Id=doubao-seedance-2-5)|文生视频|480p 720p 时长: 4~30 秒|\n|doubao\\-embedding\\-vision\\-251215|多模态向量化 支持文本、图片输入||",
     ),
     plan: payload(
       "|模型||doubao\\-seedream\\-5\\-0\\-pro|\n|---|---|---|\n|模型参数|分辨率|1K, 1.5K, 2K|\n\n|模型||doubao\\-seedance\\-2.5|\n|---|---|---|\n|输出视频规格|输出分辨率|480p 720p|\n||输出时长|4~30 秒|",
@@ -307,4 +325,8 @@ test("router JSON Markdown response is parsed without executing scripts, includi
   assert.equal(data.plan.models[1]!.model, "doubao-seedance-2.5");
   assert.equal(data.plan.models[1]!.capabilities!.durations.at(-1), 30);
   assert.equal(data.native.models[0]!.capabilities!.maxImages, 10);
+  assert.equal(
+    data.native.models.find((m) => m.kind === "embedding")?.model,
+    "doubao-embedding-vision-251215",
+  );
 });

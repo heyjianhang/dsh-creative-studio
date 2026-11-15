@@ -7,7 +7,10 @@ import {
   type StoredMediaSettings,
   type MediaSettingsInput,
 } from "../shared/media-contracts.ts";
-import { validateProviderRoute } from "../shared/media-providers.ts";
+import {
+  supportsArkEmbedding,
+  validateProviderRoute,
+} from "../shared/media-providers.ts";
 export interface SettingsTable {
   get(id: string): StoredMediaSettings | undefined;
   put(id: string, value: StoredMediaSettings): Promise<unknown>;
@@ -32,6 +35,19 @@ export class MediaSettings {
         hasKey: !!apiKey,
       })),
     };
+  }
+  /** Return enabled first-party Ark connections usable by the asset embedding client. */
+  embeddingConnections() {
+    return this.stored()
+      .connections.filter(
+        (c) => c.enabled && c.apiKey && supportsArkEmbedding(c),
+      )
+      .map(({ id, name, apiKey, embeddingModels }) => ({
+        id,
+        name,
+        apiKey,
+        models: (embeddingModels ?? []).filter((m) => m.enabled),
+      }));
   }
   catalog() {
     const config = this.stored();
@@ -73,7 +89,11 @@ export class MediaSettings {
       const ids = new Set<string>();
       for (const c of input.connections) {
         const previous = old.connections.find((v) => v.id === c.id);
-        if (previous && previous.mode !== c.mode && c.models.length)
+        if (
+          previous &&
+          previous.mode !== c.mode &&
+          (c.models.length || c.embeddingModels?.length)
+        )
           throw new Error("切换接入方式请先清空模型，或新建连接");
         if (ids.has(c.id)) throw new Error("连接 ID 重复");
         ids.add(c.id);
@@ -88,13 +108,17 @@ export class MediaSettings {
           throw new Error("API 地址必须是 HTTP(S) 地址，且不含密钥或查询参数");
         c.baseUrl = c.baseUrl.replace(/\/+$/, "");
         validateProviderRoute(c.mode, c.baseUrl);
+        if (c.embeddingModels?.length && !supportsArkEmbedding(c))
+          throw new Error("向量模型需要使用火山方舟官方按量连接");
         const modelNames = new Set<string>();
-        for (const m of c.models) {
+        for (const m of [...c.models, ...(c.embeddingModels ?? [])]) {
           if (ids.has(m.id)) throw new Error("模型 ID 重复");
           ids.add(m.id);
           if (modelNames.has(m.model))
             throw new Error("这个连接已经添加了相同模型");
           modelNames.add(m.model);
+        }
+        for (const m of c.models) {
           m.defaults = normalizeParameters(m);
           const cap = capabilities(m);
           if (!cap.resolutions.length) throw new Error("模型能力无效");

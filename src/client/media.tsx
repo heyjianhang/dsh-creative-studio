@@ -19,6 +19,7 @@ export type MediaInfo = {
 export function MediaView({
   request,
   projectId,
+  templateId,
   data,
   preview = false,
   autoPlay = false,
@@ -29,9 +30,9 @@ export function MediaView({
   onMutedChange,
   controls,
   loop = false,
+  cover = false,
 }: {
   request: Request;
-  projectId: string;
   data: CreativeNode["data"];
   preview?: boolean;
   autoPlay?: boolean;
@@ -47,9 +48,15 @@ export function MediaView({
   onMutedChange?(muted: boolean): void;
   controls?: boolean;
   loop?: boolean;
-}) {
+  cover?: boolean;
+} & ({ projectId: string; templateId?: never } | { templateId: string; projectId?: never })) {
   const { cache, queue } = mediaSession(request);
-  const key = mediaKey(projectId, data, preview);
+  const owner = templateId === undefined ? projectId : { templateId };
+  const key = mediaKey(
+    typeof owner === "string" ? owner : `template:${owner.templateId}`,
+    data,
+    preview,
+  );
   const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(() => ({
     key,
@@ -63,7 +70,7 @@ export function MediaView({
     let active = true;
     const lease = cache.acquire(key, (signal) =>
       queue.run(signal, () =>
-        readMediaBlob(request, projectId, data, preview, signal),
+        readMediaBlob(request, owner, data, preview, signal),
       ),
     );
     const cached = cache.peek(key);
@@ -95,6 +102,7 @@ export function MediaView({
       lease.release();
     };
   }, [cache, queue, key, attempt]);
+  if (error && cover) return null;
   if (error)
     return (
       <span className={css.mediaError} role="alert">

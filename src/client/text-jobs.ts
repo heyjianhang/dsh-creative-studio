@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { Generation } from "../shared/contracts.ts";
-import { applyTextResult } from "../shared/text-generation.ts";
 import type { Shared } from "./props.ts";
 
 export function useTextJobs(p: Shared, projectId: string) {
@@ -24,21 +23,11 @@ export function useTextJobs(p: Shared, projectId: string) {
         setJobs((previous) =>
           JSON.stringify(previous) === JSON.stringify(rows) ? previous : rows,
         );
-        for (const job of rows.filter(
-          (j) => j.status === "completed" && !j.applied,
-        )) {
-          if (!active || p.editor.current?.id !== projectId) break;
-          const next = applyTextResult(p.editor.current, job);
-          if (next !== p.editor.current) p.editor.change(next);
-          await p.editor.flush();
-          if (!active) break;
-          await p.request(
-            "generationAction",
-            { id: job.id, action: "acknowledge" },
-            controller.signal,
+        if (active)
+          setError(
+            rows.find((job) => job.status === "completed" && !job.applied)
+              ?.error ?? "",
           );
-        }
-        if (active) setError("");
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : String(e));
       } finally {

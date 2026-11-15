@@ -54,8 +54,8 @@ export function AssetLibrary({
 }) {
   const projectId = p.useStudio((s) => s.current!.id);
   const tabsId = useId();
-  const [tab, setTab] = useState<"creative" | "library">("creative");
-  const [libraryVisited, setLibraryVisited] = useState(false);
+  const [tab, setTab] = useState<"creative" | "library">("library");
+  const [libraryVisited, setLibraryVisited] = useState(true);
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [project, setProject] = useState(false),
     [query, setQuery] = useState(""),
@@ -519,7 +519,7 @@ export function AssetLibrary({
                   <Icon name="down" size={14} />
                 </span>
                 <span className={css.folderGlyph}>
-                  <Icon name="folder" size={25} />
+                  <Icon name="folder" size={18} />
                 </span>
                 <span>{folder.name}</span>
               </button>
@@ -656,6 +656,15 @@ export function AssetLibrary({
       ) : (
         <>
           <header className={css.libraryHeader}>
+            {tab === "creative" && (
+              <Button
+                className={css.libraryHeaderAction}
+                aria-label={p.t("backToLibrary")}
+                onClick={() => switchTab("library")}
+              >
+                <Icon name="back" size={16} />
+              </Button>
+            )}
             <strong>{p.t("assets")}</strong>
             {tab === "creative" && (
               <Menu
@@ -664,11 +673,11 @@ export function AssetLibrary({
                 onClose={() => setAddMenu(false)}
                 anchor={
                   <Button
-                    className={css.tool}
+                    className={css.libraryHeaderAction}
                     aria-label={p.t("addResources")}
                     onClick={() => setAddMenu(!addMenu)}
                   >
-                    <Icon name="plus" />
+                    <Icon name="plus" size={16} />
                   </Button>
                 }
                 items={[
@@ -686,7 +695,7 @@ export function AssetLibrary({
                   {
                     id: "folder",
                     label: p.t("newFolder"),
-                    icon: <Icon name="plus" />,
+                    icon: <Icon name="plus" size={16} />,
                   },
                 ]}
                 onSelect={(id) => {
@@ -698,57 +707,14 @@ export function AssetLibrary({
               />
             )}
             <Button
-              className={css.tool}
+              className={css.libraryHeaderAction}
               aria-label={p.t("close")}
               onClick={onClose}
             >
-              <Icon name="close" />
+              <Icon name="close" size={16} />
             </Button>
           </header>
-          <div
-            className={css.libraryTabs}
-            role="tablist"
-            aria-label={p.t("assetSource")}
-          >
-            {(["creative", "library"] as const).map((value) => (
-              <Button
-                key={value}
-                id={`${tabsId}-${value}-tab`}
-                role="tab"
-                aria-selected={tab === value}
-                aria-controls={`${tabsId}-${value}-panel`}
-                tabIndex={tab === value ? 0 : -1}
-                data-active={tab === value}
-                onClick={() => switchTab(value)}
-                onKeyDown={(e) => {
-                  if (
-                    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)
-                  ) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    switchTab(
-                      e.key === "Home"
-                        ? "creative"
-                        : e.key === "End"
-                          ? "library"
-                          : tab === "creative"
-                            ? "library"
-                            : "creative",
-                    );
-                  }
-                }}
-              >
-                {p.t(value === "creative" ? "creativeAssets" : "assets")}
-              </Button>
-            ))}
-          </div>
-          <div
-            className={css.libraryTabView}
-            role="tabpanel"
-            id={`${tabsId}-creative-panel`}
-            aria-labelledby={`${tabsId}-creative-tab`}
-            hidden={tab !== "creative"}
-          >
+          <div className={css.libraryTabView} hidden={tab !== "creative"}>
             <div className={css.librarySearch}>
               <Input
                 ref={search}
@@ -839,9 +805,6 @@ export function AssetLibrary({
           </div>
           <div
             className={`${css.libraryTabView} ${css.librarySourceView}`}
-            role="tabpanel"
-            id={`${tabsId}-library-panel`}
-            aria-labelledby={`${tabsId}-library-tab`}
             hidden={tab !== "library"}
           >
             {libraryVisited && (
@@ -851,7 +814,6 @@ export function AssetLibrary({
                 visible={tab === "library" && !overlay}
                 selectionVersion={selectionVersion}
                 onClose={onClose}
-                onSelect={(resources) => beginIncoming(resources)}
                 onAdd={(resources) => {
                   onAdd(resources);
                   setSelectionVersion((n) => n + 1);

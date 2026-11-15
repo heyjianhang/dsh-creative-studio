@@ -1,3 +1,5 @@
+import { registerCreativeWorkbench } from "./workbench.ts";
+import * as assetLibrary from "../asset-library/host/index.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import {
   bindTypertRemote,
@@ -7,26 +9,32 @@ import type {} from "@deepseek-ai/dsh-typert-registry";
 import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
 import type {} from "@deepseek-ai/dsh-llm";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
-import { defineTool } from "@deepseek-ai/dsh-tools";
+import { registerCreativeTools } from "./assistant.ts";
+import { CanvasOperations } from "./canvas-operations.ts";
+import { applyMediaResult } from "../shared/media-results.ts";
+import { applyTextResult } from "../shared/text-generation.ts";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import {
   endpoints,
   contribution,
   projectSchema,
+  canvasTemplateSchema,
   mediaSchema,
   creativeAssetSchema,
   folderCatalogSchema,
   type Method,
   type Input,
+  type Media,
   type TextJob,
 } from "../shared/contracts.ts";
 import { MediaSettings } from "./media-settings.ts";
 import { VolcCatalog } from "./volc-catalog.ts";
 import { TemplateLibrary } from "./template-library.ts";
+import { CanvasTemplates } from "./canvas-templates.ts";
 import { TemplateMedia } from "./template-media.ts";
 import { MediaGenerations } from "./media-generation.ts";
 import {
@@ -37,6 +45,7 @@ import { TextRuntime } from "./text-runtime.ts";
 import { TextGenerations } from "./text-generation.ts";
 import { generationSchema } from "../shared/text-contracts.ts";
 import { Projects } from "./projects.ts";
+import { isProjectConflict } from "../shared/project-merge.ts";
 import { Uploads } from "./uploads.ts";
 import { CreativeAssets } from "./creative-assets.ts";
 import { LibrarySearch, type AssetService } from "./library-search.ts";
@@ -77,8 +86,18 @@ const mediaGenerationSpec = defineDomain({
     jobs: domainTable(mediaJobSchema),
   },
 });
+const canvasTemplateSpec = defineDomain({
+  name: "creative_canvas_templates",
+  version: 1,
+  tables: { templates: domainTable(canvasTemplateSchema) },
+});
 export const name = "creative-studio";
-export const inject = ["typert", "storageDomain"];
+export const inject = [
+  "typert",
+  "storageDomain",
+  "credentials",
+  "actveroWorkbenchRuntime",
+];
 export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
   const root =
     config.dataDir ??
@@ -183,6 +202,12 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
   const generations = new TextGenerations(
     textDomain.table("jobs"),
     (job, signal, delta) => textRuntime.run(job, signal, delta),
+    undefined,
+    async (job) => {
+      await projects.transform(job.projectId, (project) =>
+        applyTextResult(project, job),
+      );
+    },
   );
   await generations.restore();
   const mediaDomain = await ctx.storageDomain
@@ -195,7 +220,10 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
       await domain.close();
       throw e;
     });
-  const mediaSettings = new MediaSettings(mediaDomain.table("settings"));
+  const generationSettings = new MediaSettings(mediaDomain.table("settings"));
+  ctx.plugin(assetLibrary, {
+    embeddingConnections: () => generationSettings.embeddingConnections(),
+  });
   const volcCatalog = new VolcCatalog(join(root, "catalog"));
   const templates = new TemplateLibrary(join(root, "templates"));
   const templateMedia = new TemplateMedia((projectId, name, response, signal) =>
@@ -203,7 +231,7 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
   );
   const mediaGenerations = new MediaGenerations(
     mediaDomain.table("jobs"),
-    mediaSettings,
+    generationSettings,
     async (node, offset, signal) => {
       if (node.data.media) {
         const m = domain.table("media").get(node.data.media.id);
@@ -226,8 +254,66 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
     fetch,
     5000,
     (mode, signal) => volcCatalog.get(mode, false, signal),
+    async (job) => {
+      await projects.transform(job.projectId, (project) =>
+        applyMediaResult(project, job),
+      );
+    },
   );
+  ctx.effect(() => async () => {
+    for (const j of jobs.values()) j.abort.abort();
+    await mediaGenerations.close();
+    await volcCatalog.close();
+    await templateMedia.close();
+    await templates.close();
+    await mediaDomain.close();
+    await generations.close();
+    await textDomain.close();
+    await uploads.dispose();
+    await creativeAssets.close();
+    await folderDomain.close();
+    await creativeDomain.close();
+    await domain.close();
+  });
   await mediaGenerations.restore();
+  const canvasTemplateDomain = await ctx.storageDomain.open(canvasTemplateSpec);
+  ctx.effect(() => () => canvasTemplateDomain.close());
+  const canvasTemplates = new CanvasTemplates(
+    canvasTemplateDomain.table("templates"),
+    projects,
+    async (nodes, signal) => {
+      const checked = new Set<string>();
+      for (const { data } of nodes) {
+        signal.throwIfAborted();
+        const key = data.media
+          ? JSON.stringify(["media", data.media.id])
+          : data.asset
+            ? JSON.stringify(["asset", data.asset.libraryId, data.asset.id])
+            : undefined;
+        if (!key || checked.has(key)) continue;
+        try {
+          if (data.media) {
+            if (!domain.table("media").get(data.media.id))
+              throw new Error("文件记录不存在");
+            await access(join(root, "media", data.media.id));
+          } else if (data.asset) {
+            if (!assets) throw new Error("素材库尚未就绪");
+            await assets.resolveAsset(
+              { libraryId: data.asset.libraryId, id: data.asset.id },
+              signal,
+            );
+          }
+        } catch (error) {
+          signal.throwIfAborted();
+          throw new Error(
+            `画布素材「${data.label}」不可用，请检查原文件后重试`,
+            { cause: error },
+          );
+        }
+        checked.add(key);
+      }
+    },
+  );
   async function dispatch<K extends Method>(
     method: K,
     raw: Input<K>,
@@ -238,6 +324,25 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
     switch (method) {
       case "templates":
         return templates.search(input as Input<"templates">, signal);
+      case "canvasTemplates":
+        return canvasTemplates.list();
+      case "saveCanvasTemplate":
+        return canvasTemplates.save(
+          input as Input<"saveCanvasTemplate">,
+          signal,
+        );
+      case "createFromCanvasTemplate":
+        return canvasTemplates.createProject(
+          (input as Input<"createFromCanvasTemplate">).id,
+          signal,
+        );
+      case "removeCanvasTemplate":
+        return canvasTemplates.remove((input as Input<"removeCanvasTemplate">).id);
+      case "canvasTemplateFragment":
+        return canvasTemplates.fragment(
+          input as Input<"canvasTemplateFragment">,
+          signal,
+        );
       case "favoriteTemplate": {
         const r = input as Input<"favoriteTemplate">;
         return templates.favorite(r.id, r.favorite);
@@ -249,17 +354,21 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
         return templateMedia.load(r.projectId, template, r.urls, signal);
       }
       case "mediaSettings":
-        return mediaSettings.view();
+        return generationSettings.view();
       case "saveMediaSettings":
-        return mediaSettings.save(input as Input<"saveMediaSettings">);
+        return generationSettings.save(input as Input<"saveMediaSettings">);
       case "mediaModels":
-        return mediaSettings.catalog();
+        return generationSettings.catalog();
       case "discoverMediaModels": {
         const r = input as Input<"discoverMediaModels">;
         return volcCatalog.get(r.mode, r.refresh ?? false, signal);
       }
-      case "mediaJobs":
-        return mediaGenerations.list((input as Input<"mediaJobs">).projectId);
+      case "mediaJobs": {
+        const id = (input as Input<"mediaJobs">).projectId;
+        projects.get(id);
+        await mediaGenerations.applyResults(id);
+        return mediaGenerations.list(id);
+      }
       case "mediaJobAction": {
         const r = input as Input<"mediaJobAction">;
         return mediaGenerations.action(r.id, r.action);
@@ -267,7 +376,10 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
       case "generateMedia": {
         const r = input as Input<"generateMedia">;
         const project = projects.get(r.projectId);
-        if (project.revision !== r.revision)
+        const previous = mediaGenerations
+          .list(project.id)
+          .filter((job) => job.batchId === r.requestId);
+        if (!previous.length && project.revision !== r.revision)
           throw new Error("画布已更新，请保存后重试");
         return mediaGenerations.start(project, r.nodeId, r.requestId);
       }
@@ -275,8 +387,12 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
         return textRuntime.catalog();
       case "textModel":
         return textRuntime.info(input as Input<"textModel">);
-      case "generations":
-        return generations.list((input as Input<"generations">).projectId);
+      case "generations": {
+        const id = (input as Input<"generations">).projectId;
+        projects.get(id);
+        await generations.applyResults(id);
+        return generations.list(id);
+      }
       case "generationAction": {
         const r = input as Input<"generationAction">;
         return generations.action(r.id, r.action);
@@ -343,8 +459,55 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
           throw new Error("素材不存在");
         return uploads.read(m.id, m.mime, r.offset ?? 0);
       }
+      case "canvasTemplateCover": {
+        const r = input as Input<"canvasTemplateCover">;
+        if (canvasTemplates.coverMediaId(r.templateId) !== r.mediaId)
+          throw new Error("模板封面不存在");
+        const m = domain.table("media").get(r.mediaId);
+        if (!m) throw new Error("模板封面不存在");
+        return uploads.read(m.id, m.mime, r.offset ?? 0);
+      }
       case "libraryInfo":
         return library.info(signal);
+      case "saveLibraryResources": {
+        const r = input as Input<"saveLibraryResources">;
+        if (!assets) throw new Error("请先启用素材库");
+        const service = assets;
+        const project = projects.get(r.projectId);
+        const media = new Map<string, Media>();
+        const assetIds = new Set<string>();
+        for (const resource of r.resources) {
+          if (resource.asset) {
+            if (resource.asset.libraryId !== r.libraryId)
+              throw new Error("请选择素材所在库的收藏夹");
+            assetIds.add(resource.asset.id);
+          } else if (resource.media) {
+            const file = domain.table("media").get(resource.media.id);
+            if (!file || (
+              file.projectId !== project.id &&
+              !project.nodes.some((node) => node.data.media?.id === file.id)
+            )) throw new Error("当前项目中的素材不存在");
+            media.set(file.id, file);
+          }
+        }
+        for (const id of assetIds)
+          await service.resolveAsset({ libraryId: r.libraryId, id }, signal);
+        for (const file of media.values())
+          await service.importCanvasFile({
+            libraryId: r.libraryId,
+            path: join(root, "media", file.id),
+            name: file.name,
+            mime: file.mime,
+            size: file.size,
+            collectionId: r.collectionId,
+          }, signal);
+        if (r.collectionId && assetIds.size)
+          await service.editBatch({
+            libraryId: r.libraryId,
+            changes: [...assetIds].map((id) => ({ id, addCollections: [r.collectionId] })),
+          }, signal);
+        return { ok: true as const };
+      }
       case "searchLibrary":
         return library.search(input as Input<"searchLibrary">, signal);
       case "creativeAssets": {
@@ -476,7 +639,7 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
 
 此目录属于 DSH 创作插件项目。项目 ID：${p.id}。
 
-用户要求查看画布时，用 creative_projects 并指定该 ID 读取最新内容。用户要求添加提示词、文案或脚本时，用 creative_add_text 添加文本节点。每次操作后重新读取，不直接编辑存储文件。图片、视频可通过创作节点生成，不要声称已经生成媒体。
+先读取 creative-studio-assistant Skill。用 creative_projects 读取最新项目与 revision；素材检索使用 asset_library_list/search/inspect，画布编辑使用 creative_canvas_edit，生成使用 creative_models、creative_generate 与 creative_generation_jobs。此对话固定操作该项目，每次交付前重新读取，不直接编辑存储文件；任务提交不等于生成完成。
 `,
           { flag: "wx" },
         ).catch((error: NodeJS.ErrnoException) => {
@@ -494,6 +657,7 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
         return await dispatch(method, input, signal);
       } catch (e) {
         signal.throwIfAborted();
+        if (isProjectConflict(e)) throw e;
         throw new RemoteError(
           "creative-studio/error",
           e instanceof Error ? e.message : String(e),
@@ -512,100 +676,45 @@ export async function apply(ctx: Context, config: { dataDir?: string } = {}) {
       invocations: contribution.descriptors,
     }),
   );
-  ctx.inject(["tools"], (scope) => {
-    scope.tools.register(
-      defineTool({
-        name: "creative_assets_search",
-        description:
-          "搜索创作素材库中的角色、场景、道具与风格。返回名称、描述和参考素材 ID。ai=true 会使用已有素材库的语义检索；不可用时返回普通搜索结果及 fallback 标记。",
-        parameters: {
-          query: {
-            type: "string",
-            required: true,
-            description: "名称或想找的画面描述",
-          },
-          ai: { type: "boolean", description: "是否使用语义检索，默认 false" },
-        },
-        output: {
-          schema: { type: "string" },
-          render: (_, value) => [{ type: "text", text: value }],
-        },
-        execute: async (a) =>
-          JSON.stringify(
-            await creativeAssets.search(
-              { query: a.query, ai: a.ai ?? false },
-              AbortSignal.timeout(30000),
-            ),
+  const canvas = new CanvasOperations(
+    projects,
+    async (libraryId, assetId, signal) => {
+      if (!assets) throw new Error("素材库尚未就绪，请重试");
+      return assets.resolveAsset({ libraryId, id: assetId }, signal);
+    },
+  );
+  const request: import("../shared/contracts.ts").Request = async (
+    method,
+    input,
+    signal = new AbortController().signal,
+  ) =>
+    endpoints[method].output.parse(
+      await dispatch(method, input, signal),
+    ) as import("../shared/contracts.ts").Output<typeof method>;
+  const registerTools = (scope: Context, target: string | null) =>
+    registerCreativeTools(
+      scope,
+      {
+        projects,
+        canvas,
+        request,
+        open: async (project, signal) =>
+          ctx.actveroWorkbenchRuntime.present(
+            {
+              id: "dsh-creative-studio" as import("@actvero/dsh-capability-ui").WorkbenchId,
+              mode: "business",
+              sidebar: "focus",
+              ai: "hide",
+              objectId:
+                project.id as import("@actvero/dsh-capability-ui").WorkbenchObjectId,
+            },
+            signal,
           ),
-      }),
+      },
+      target,
     );
-    scope.tools.register(
-      defineTool({
-        name: "creative_projects",
-        description: "列出创作插件中的项目和节点，供用户选择项目。",
-        parameters: {
-          project_id: {
-            type: "string",
-            description: "项目 ID；省略则仅列项目摘要",
-          },
-        },
-        output: {
-          schema: { type: "string" },
-          render: (_, v) => [{ type: "text", text: v }],
-        },
-        execute: async (a) =>
-          JSON.stringify(
-            a.project_id
-              ? projects.get(a.project_id)
-              : projects.list().map(({ id, name, nodes }) => ({
-                  id,
-                  name,
-                  nodeCount: nodes.length,
-                })),
-          ),
-      }),
-    );
-    scope.tools.register(
-      defineTool({
-        name: "creative_add_text",
-        description:
-          "在用户指定的创作项目画布添加文本节点。先通过 creative_projects 获取项目 ID。",
-        parameters: {
-          project_id: {
-            type: "string",
-            required: true,
-            description: "创作项目 ID",
-          },
-          text: {
-            type: "string",
-            required: true,
-            description: "节点文本，最多 30000 字符",
-          },
-        },
-        output: {
-          schema: { type: "string" },
-          render: (_, v) => [{ type: "text", text: v }],
-        },
-        execute: async (a) => {
-          if (a.text.length > 30000) throw new Error("文本过长");
-          return JSON.stringify(await projects.addText(a.project_id, a.text));
-        },
-      }),
-    );
-  });
-  ctx.effect(() => async () => {
-    for (const j of jobs.values()) j.abort.abort();
-    await mediaGenerations.close();
-    await volcCatalog.close();
-    await templateMedia.close();
-    await templates.close();
-    await mediaDomain.close();
-    await generations.close();
-    await textDomain.close();
-    await uploads.dispose();
-    await creativeAssets.close();
-    await folderDomain.close();
-    await creativeDomain.close();
-    await domain.close();
+  registerCreativeWorkbench(ctx, projects, registerTools, async (scope) => {
+    if (!assets) throw new Error("素材库尚未就绪，请重试");
+    await assets.activateAssistant(scope);
   });
 }

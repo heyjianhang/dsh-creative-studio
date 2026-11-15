@@ -1,0 +1,9 @@
+{
+  "name": "创作",
+  "description": "在节点画布上整理素材、连接参考，和 AI 一起构思、排版并生成图文或视频。",
+  "category": "content",
+  "protocol": {
+    "schemaVersion": 1,
+    "hostApi": "^1.7.0"
+  }
+}

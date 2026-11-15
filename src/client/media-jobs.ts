@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { MediaJob } from "../shared/contracts.ts";
-import { applyMediaResult } from "../shared/media-results.ts";
 import type { Shared } from "./props.ts";
 export function useMediaJobs(p: Shared, projectId: string) {
   const [jobs, setJobs] = useState<MediaJob[]>([]),
@@ -19,21 +18,11 @@ export function useMediaJobs(p: Shared, projectId: string) {
         setJobs((previous) =>
           JSON.stringify(previous) === JSON.stringify(rows) ? previous : rows,
         );
-        for (const job of rows.filter(
-          (j) => j.status === "completed" && !j.applied,
-        )) {
-          if (!active || p.editor.current?.id !== projectId) break;
-          const next = applyMediaResult(p.editor.current, job);
-          if (next !== p.editor.current) p.editor.change(next);
-          await p.editor.flush();
-          if (!active) break;
-          await p.request(
-            "mediaJobAction",
-            { id: job.id, action: "acknowledge" },
-            c.signal,
+        if (active)
+          setError(
+            rows.find((job) => job.status === "completed" && !job.applied)
+              ?.error ?? "",
           );
-        }
-        if (active) setError("");
       } catch (e) {
         if (active) setError((e as Error).message);
       } finally {

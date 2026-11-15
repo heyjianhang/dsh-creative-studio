@@ -160,6 +160,34 @@ export const projectSchema = graphSchema.extend({
     })
     .optional(),
 });
+/** Reusable project content without project identity, chat or history. */
+export const canvasTemplateContentSchema = projectSchema.pick({
+  nodes: true,
+  edges: true,
+  viewport: true,
+  playbackPreferences: true,
+  generationPreferences: true,
+});
+const canvasTemplateSummarySchema = z.object({
+  id,
+  name: projectSchema.shape.name,
+  createdAt: z.iso.datetime(),
+  nodeCount: z.number().int().positive(),
+  cover: nodeSchema.shape.data.pick({ kind: true, label: true, text: true, media: true, asset: true }).optional(),
+});
+/** Saved canvas snapshot, independent of the original project's lifecycle. */
+export const canvasTemplateSchema = canvasTemplateContentSchema.extend({
+  id,
+  name: projectSchema.shape.name,
+  createdAt: z.iso.datetime(),
+});
+export type CanvasTemplateContent = z.output<
+  typeof canvasTemplateContentSchema
+>;
+export type CanvasTemplate = z.output<typeof canvasTemplateSchema>;
+export type CanvasTemplateSummary = z.output<
+  typeof canvasTemplateSummarySchema
+>;
 export const jobSchema = z.object({
   id,
   text: z.string(),
@@ -184,6 +212,7 @@ export const librarySearchSchema = z.object({
   ai: z.boolean().default(true),
   kind: z.enum(["all", "image", "video"]).default("all"),
   libraryId: z.string().optional(),
+  collectionId: z.string().optional(),
   offset: z.number().int().min(0).default(0),
   limit: z.number().int().min(1).max(100).default(40),
 });
@@ -202,6 +231,24 @@ const mediaResult = z.object({
 });
 export const endpoints = {
   templates: { input: templateQuerySchema, output: templateResultSchema },
+  canvasTemplates: {
+    input: z.object({}),
+    output: z.array(canvasTemplateSummarySchema),
+  },
+  saveCanvasTemplate: {
+    input: z.object({
+      projectId: id,
+      revision: z.number().int().nonnegative(),
+      name: projectSchema.shape.name,
+    }),
+    output: canvasTemplateSummarySchema,
+  },
+  createFromCanvasTemplate: { input: z.object({ id }), output: projectSchema },
+  removeCanvasTemplate: { input: z.object({ id }), output: ok },
+  canvasTemplateFragment: {
+    input: z.object({ id, origin: point }),
+    output: graphSchema,
+  },
   favoriteTemplate: {
     input: z.object({ id: templateId, favorite: z.boolean() }),
     output: z.array(templateId).max(10000),
@@ -310,15 +357,38 @@ export const endpoints = {
     }),
     output: mediaResult,
   },
+  canvasTemplateCover: {
+    input: z.object({ templateId: id, mediaId: id, offset: z.number().int().min(0).default(0) }),
+    output: mediaResult,
+  },
   assets: {
     input: z.object({ query: z.string().max(300) }),
     output: z.array(assetSchema),
+  },
+  saveLibraryResources: {
+    input: z.object({
+      projectId: id,
+      libraryId: z.string().min(1),
+      collectionId: z.string().min(1).optional(),
+      resources: z.array(resourceSchema).min(1).max(24),
+    }),
+    output: ok,
   },
   libraryInfo: {
     input: z.object({}),
     output: z.object({
       available: z.boolean(),
       aiReady: z.boolean(),
+      folders: z
+        .array(
+          z.object({
+            id: z.string(),
+            libraryId: z.string(),
+            name: z.string(),
+            count: z.number(),
+          }),
+        )
+        .default([]),
       libraries: z.array(
         z.object({
           id: z.string(),

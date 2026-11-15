@@ -90,7 +90,7 @@ export const mediaModelSchema = z
 export const discoveredModelSchema = z.object({
   model: z.string().min(1).max(200),
   name: z.string().min(1).max(120),
-  kind: z.enum(["image", "video"]),
+  kind: z.enum(["image", "video", "embedding"]),
   capabilities: modelCapabilitiesSchema.optional(),
   retiring: z.boolean().default(false),
 });
@@ -101,6 +101,12 @@ export const discoverySchema = z.object({
   models: z.array(discoveredModelSchema).min(1).max(500),
   warning: z.string().optional(),
 });
+export const embeddingModelSchema = z.object({
+  id: uuid,
+  name: z.string().trim().min(1).max(120),
+  model: z.string().trim().min(1).max(200),
+  enabled: z.boolean().default(true),
+});
 export const connectionSchema = z.object({
   id: uuid,
   name: z.string().trim().min(1).max(80),
@@ -108,6 +114,7 @@ export const connectionSchema = z.object({
   baseUrl: z.url().max(500),
   enabled: z.boolean(),
   models: z.array(mediaModelSchema).max(50),
+  embeddingModels: z.array(embeddingModelSchema).max(50).optional(),
 });
 export const mediaSettingsSchema = z.object({
   revision: z.number().int().min(0),
@@ -244,6 +251,7 @@ export type ModelCapabilities = z.output<typeof modelCapabilitiesSchema>;
 export type DiscoveredModel = z.output<typeof discoveredModelSchema>;
 export type ModelDiscovery = z.output<typeof discoverySchema>;
 export type MediaModel = z.output<typeof mediaModelSchema>;
+export type EmbeddingModel = z.output<typeof embeddingModelSchema>;
 export type MediaComposerState = z.output<typeof mediaComposerSchema>;
 export type MediaJob = z.output<typeof mediaJobSchema>;
 export type MediaCatalog = z.output<typeof mediaCatalogSchema>;

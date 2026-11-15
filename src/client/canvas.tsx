@@ -25,7 +25,12 @@ import {
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { SessionReference } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { CanvasProps, Request } from "./props.ts";
-import type { CreativeNode, Project, Resource } from "../shared/contracts.ts";
+import {
+  graphSchema,
+  type CreativeNode,
+  type Project,
+  type Resource,
+} from "../shared/contracts.ts";
 import {
   generationDefaults,
   rememberGeneration,
@@ -37,12 +42,15 @@ import { NodePanel } from "./node-panel.tsx";
 import { downloadMedia } from "./media-source.ts";
 import { MediaDownloadDialogs } from "./media-downloads.tsx";
 import { NodePins, PinPicker } from "./node-pins.tsx";
-import { SaveCreativeResources } from "./save-creative-resources.tsx";
+import { SaveToLibrary } from "./save-to-library.tsx";
+import { nodeResource, uniqueResources } from "./asset-shared.tsx";
 import { reconcileNodes, reconcileEdges } from "./canvas-state.ts";
 import { MediaView, upload } from "./media.tsx";
+import { mediaKey } from "./media-source.ts";
+import { mediaNodeSize } from "./media-geometry.ts";
 import { MediaPreview } from "./media-preview.tsx";
 import { MarkdownEditor } from "./markdown-editor.tsx";
-import { ProjectSwitcher } from "./project-switcher.tsx";
+import { SaveFeedback } from "./save-feedback.tsx";
 import { CanvasMinimap } from "./canvas-minimap.tsx";
 import { AssetLibrary } from "./asset-library.tsx";
 import { TextComposer, type ReferencePicking } from "./text-composer.tsx";
@@ -96,6 +104,16 @@ const NodeContext = createContext<{
 function ContentNode({ id, data, selected }: NodeProps<FlowNode>) {
   const connecting = useConnection((connection) => connection.inProgress);
   const c = useContext(NodeContext)!;
+  const sourceKey = mediaKey(c.projectId, data, false);
+  const [mediaSize, setMediaSize] = useState<{
+    key: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  const fitted =
+    mediaSize?.key === sourceKey
+      ? mediaNodeSize(mediaSize.width, mediaSize.height)
+      : null;
   const refState = c.referenceState(id);
   const jobs = c.jobs(id),
     inProgress = jobs.some(jobActive);
@@ -108,7 +126,12 @@ function ContentNode({ id, data, selected }: NodeProps<FlowNode>) {
       jobActive(j) || ["failed", "uncertain", "cancelled"].includes(j.status),
   );
   // React Flow's NodeProps dimensions are measurements, not the user's saved size.
-  const dimensions = data.kind === "text" ? c.dimensions(id) : undefined;
+  const dimensions =
+    data.kind === "text"
+      ? c.dimensions(id)
+      : fitted
+        ? { width: fitted.width + 2 }
+        : undefined;
   return (
     <div
       className={css.contentNode}
@@ -194,6 +217,15 @@ function ContentNode({ id, data, selected }: NodeProps<FlowNode>) {
           request={c.request}
           projectId={c.projectId}
           data={data}
+          onReady={({ width, height }) =>
+            setMediaSize((old) =>
+              old?.key === sourceKey &&
+              old.width === width &&
+              old.height === height
+                ? old
+                : { key: sourceKey, width, height },
+            )
+          }
           canvas={{
             t: c.t,
             muted: c.muted,
@@ -306,7 +338,6 @@ function CanvasBody(p: CanvasProps) {
       point: XYPosition;
     } | null>(null),
     [panel, setPanel] = useState<"assets" | "assistant" | null>(null),
-    [assetDraft, setAssetDraft] = useState<Resource[]>(),
     [minimap, setMinimap] = useState(false),
     [help, setHelp] = useState(false),
     [templatesOpen, setTemplatesOpen] = useState(false),
@@ -326,6 +357,7 @@ function CanvasBody(p: CanvasProps) {
     flow = useReactFlow<FlowNode>();
   const selected = nodes.find((n) => n.selected),
     selectedCount = nodes.filter((n) => n.selected).length;
+  const selectedResource = selected && nodeResource(selected.data);
   const muted = project.playbackPreferences?.muted ?? true;
   const setMuted = (muted: boolean) => {
     if ((p.editor.current?.playbackPreferences?.muted ?? true) !== muted)
@@ -365,28 +397,6 @@ function CanvasBody(p: CanvasProps) {
       uploadAbort.current?.abort();
     };
   }, []);
-  useEffect(() => {
-    if (panel !== "assistant") return;
-    let active = true,
-      reference: SessionReference | undefined;
-    setAgentError("");
-    void p.editor
-      .flush()
-      .then(() => p.retainAgent(project.id))
-      .then((r) => {
-        reference = r;
-        if (active) setAgent(r);
-        else r.release();
-      })
-      .catch((e) => {
-        if (active) setAgentError(e.message);
-      });
-    return () => {
-      active = false;
-      reference?.release();
-      setAgent(null);
-    };
-  }, [panel, project.id]);
   useEffect(() => {
     if (
       panel ||
@@ -773,6 +783,7 @@ function CanvasBody(p: CanvasProps) {
       data-studio-canvas
       onKeyDownCapture={(e) => {
         if (
+          e.defaultPrevented ||
           (e.target as Element).closest(
             '[role="dialog"]:not([data-studio-surface]), [data-studio-agent],[data-studio-assets],[role="menu"],[data-project-switcher],[data-text-composer]',
           )
@@ -1079,7 +1090,7 @@ function CanvasBody(p: CanvasProps) {
           {minimap && <CanvasMinimap label={p.t("minimap")} />}
         </ReactFlow>
       </NodeContext.Provider>
-      <ProjectSwitcher {...p} />
+
       {picking && (
         <div className={css.referencePickBar} role="status">
           <span>{p.t("pickReference")}</span>
@@ -1088,25 +1099,6 @@ function CanvasBody(p: CanvasProps) {
           </Button>
         </div>
       )}
-      <div className={css.topActions}>
-        <span className={css.saveState} data-error={state.status === "error"}>
-          {p.t(
-            state.status === "error"
-              ? "unsaved"
-              : state.status === "saving"
-                ? "saving"
-                : "saved",
-          )}
-        </span>
-        <Button
-          className={css.assistantTrigger}
-          data-active={panel === "assistant"}
-          onClick={() => setPanel(panel === "assistant" ? null : "assistant")}
-        >
-          <Icon name="chat" />
-          {p.t("assistant")}
-        </Button>
-      </div>
       <div className={css.rail}>
         <Tool
           label={p.t("add")}
@@ -1121,7 +1113,6 @@ function CanvasBody(p: CanvasProps) {
           active={panel === "assets"}
           onClick={() => {
             setMenu(null);
-            setAssetDraft(undefined);
             assetPoint.current = center();
             setPanel(panel === "assets" ? null : "assets");
           }}
@@ -1135,11 +1126,12 @@ function CanvasBody(p: CanvasProps) {
             setTemplatesOpen(true);
           }}
         />
+        <span className={css.railDivider} />
         <Tool
-          label={p.t("assistant")}
-          icon="chat"
-          active={panel === "assistant"}
-          onClick={() => setPanel(panel === "assistant" ? null : "assistant")}
+          label={p.t("help")}
+          icon="help"
+          active={help}
+          onClick={() => setHelp(true)}
         />
       </div>
       <div className={css.viewportBar} data-studio-viewport>
@@ -1196,17 +1188,14 @@ function CanvasBody(p: CanvasProps) {
           onClick={() => p.editor.redo()}
         />
       </div>
-      <div className={css.helpButton}>
-        <Tool
-          label={p.t("help")}
-          icon="help"
-          side="top"
-          onClick={() => setHelp(!help)}
-        />
-      </div>
-      {help && (
-        <div className={css.helpPopup}>
-          <strong>{p.t("canvasGestures")}</strong>
+      <Modal
+        open={help}
+        title={p.t("canvasGestures")}
+        closeLabel={p.t("close")}
+        onClose={() => setHelp(false)}
+        className={css.helpDialog}
+      >
+        <div className={css.helpContent}>
           <dl>
             {(
               [
@@ -1225,7 +1214,7 @@ function CanvasBody(p: CanvasProps) {
             ))}
           </dl>
         </div>
-      )}
+      </Modal>
       <Modal
         open={templatesOpen}
         title={p.t("templates")}
@@ -1237,6 +1226,48 @@ function CanvasBody(p: CanvasProps) {
         {templatesOpen && (
           <TemplateLibrary
             p={p}
+            onUseCanvas={async (id) => {
+              const projectId = p.editor.current?.id;
+              await p.editor.flush();
+              if (
+                !projectId ||
+                p.editor.current?.id !== projectId ||
+                !root.current
+              )
+                throw new Error(p.t("templateCanvasChanged"));
+              const origin = center();
+              for (const n of nodesRef.current)
+                origin.x = Math.max(
+                  origin.x,
+                  n.position.x + (n.measured?.width ?? n.width ?? 270) + 80,
+                );
+              const fragment = await p.request("canvasTemplateFragment", {
+                id,
+                origin,
+              });
+              if (p.editor.current?.id !== projectId)
+                throw new Error(p.t("templateCanvasChanged"));
+              const next = [
+                ...nodesRef.current.map((n) => ({ ...n, selected: false })),
+                ...fragment.nodes.map((n) => ({ ...n, selected: true })),
+              ];
+              const nextEdges = [...edgesRef.current, ...fragment.edges];
+              graphSchema.parse({
+                nodes: clean(next),
+                edges: cleanEdges(nextEdges),
+                viewport: flow.getViewport(),
+              });
+              nodesRef.current = next;
+              edgesRef.current = nextEdges;
+              setNodes(next);
+              setEdges(nextEdges);
+              commit(next, nextEdges);
+              setTemplatesOpen(false);
+              void flow.setCenter(origin.x + 135, origin.y + 100, {
+                zoom: flow.getZoom(),
+              });
+              await p.editor.flush();
+            }}
             onUse={async (template, urls) => {
               const projectId = p.editor.current!.id;
               await p.editor.flush();
@@ -1333,7 +1364,6 @@ function CanvasBody(p: CanvasProps) {
                 setMenu(null);
               } else if (id === "assets") {
                 assetPoint.current = { ...menu.point };
-                setAssetDraft(undefined);
                 setPanel("assets");
                 setMenu(null);
               } else add(id as "text" | "image" | "video");
@@ -1346,7 +1376,6 @@ function CanvasBody(p: CanvasProps) {
           p={p}
           onClose={() => {
             setPanel(null);
-            setAssetDraft(undefined);
             root.current?.focus({ preventScroll: true });
           }}
           onAdd={(references, item) => {
@@ -1371,47 +1400,6 @@ function CanvasBody(p: CanvasProps) {
           }}
         />
       )}
-      {assetDraft && (
-        <SaveCreativeResources
-          p={p}
-          resources={assetDraft}
-          onClose={() => setAssetDraft(undefined)}
-        />
-      )}
-      {panel === "assistant" && (
-        <section
-          className={css.agentPanel}
-          data-studio-agent
-          aria-label={p.t("assistant")}
-        >
-          <header>
-            <strong>
-              <Icon name="sparkle" />
-              {p.t("assistant")}
-            </strong>
-            <Tool
-              label={p.t("close")}
-              icon="close"
-              onClick={() => setPanel(null)}
-            />
-          </header>
-          <div className={css.agentContent}>
-            {agent ? (
-              <p.SessionProvider session={agent}>
-                {p.renderSlot("creative.agent", {})}
-              </p.SessionProvider>
-            ) : (
-              <div className={css.agentLoading}>
-                {agentError ? (
-                  <span role="alert">{agentError}</span>
-                ) : (
-                  p.t("opening")
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
       {selectedCount > 1 &&
         !panel &&
         nodes.some((n) => n.selected && (n.data.media || n.data.asset)) && (
@@ -1420,32 +1408,14 @@ function CanvasBody(p: CanvasProps) {
               <span>
                 {selectedCount} {p.t("selected")}
               </span>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const refs = nodes
-                    .filter(
-                      (n) =>
-                        n.selected &&
-                        n.data.kind !== "text" &&
-                        (n.data.media || n.data.asset),
-                    )
-                    .map((n) => ({
-                      kind: n.data.kind as "image" | "video",
-                      media: n.data.media,
-                      asset: n.data.asset,
-                    }));
-                  if (refs.length > 24) {
-                    p.notify(p.t("referenceLimit"));
-                    return;
-                  }
-                  setAssetDraft(refs);
-                  setPanel(null);
-                }}
-              >
-                <Icon name="folder" size={17} />
-                {p.t("saveSelection")}
-              </Button>
+              <SaveToLibrary
+                p={p}
+                projectId={project.id}
+                resources={uniqueResources(nodes.filter((node) => node.selected)
+                  .map((node) => nodeResource(node.data))
+                  .filter((resource): resource is Resource => !!resource))}
+                showLabel
+              />
             </footer>
           </section>
         )}
@@ -1453,7 +1423,7 @@ function CanvasBody(p: CanvasProps) {
         selectedCount === 1 &&
         !panel &&
         !editingText && (
-          <NodePanel node={selected} root={root}>
+          <NodePanel node={selected}>
             <TextComposer
               key={`composer:${selected.id}`}
               p={p}
@@ -1474,7 +1444,7 @@ function CanvasBody(p: CanvasProps) {
         selected.data.kind !== "text" &&
         selectedCount === 1 &&
         !panel && (
-          <NodePanel node={selected} root={root}>
+          <NodePanel node={selected}>
             <MediaComposer
               key={`media-composer:${selected.id}:${mediaConfigRevision}`}
               p={p}
@@ -1529,7 +1499,7 @@ function CanvasBody(p: CanvasProps) {
         !editingText &&
         selectedCount === 1 &&
         !panel && (
-          <NodePanel node={selected} root={root} above>
+          <NodePanel node={selected} above>
             <nav
               className={css.nodeActionBar}
               aria-label={p.t("resourceActions")}
@@ -1541,21 +1511,15 @@ function CanvasBody(p: CanvasProps) {
                   changeNode(selected.id, { ...selected.data, colorPins })
                 }
               />
-              <Tool
-                label={p.t("saveSelection")}
-                icon="folder"
-                disabled={!selected.data.media && !selected.data.asset}
-                onClick={() => {
-                  setAssetDraft([
-                    {
-                      kind: selected.data.kind as "image" | "video",
-                      media: selected.data.media,
-                      asset: selected.data.asset,
-                    },
-                  ]);
-                  setPanel(null);
-                }}
-              />
+              {selectedResource && (
+                <SaveToLibrary
+                  key={selected.id}
+                  p={p}
+                  projectId={project.id}
+                  resources={[selectedResource]}
+                  className={css.tool}
+                />
+              )}
               <Tool
                 label={p.t("downloadOriginal")}
                 icon="download"
@@ -1588,46 +1552,13 @@ function CanvasBody(p: CanvasProps) {
             </nav>
           </NodePanel>
         )}
-      {(error ||
-        state.error ||
-        textJobs.error ||
-        mediaJobs.error ||
-        progress) && (
+      {state.status === "error" ? (
+        <div className={css.canvasMessage} role="alert">
+          <SaveFeedback p={p} message={state.error ?? ""} conflict={state.conflict} />
+        </div>
+      ) : (error || state.error || textJobs.error || mediaJobs.error || progress) && (
         <div className={css.canvasMessage} role={progress ? "status" : "alert"}>
-          <span>
-            {progress ||
-              error ||
-              state.error ||
-              textJobs.error ||
-              mediaJobs.error}
-          </span>
-          {state.status === "error" && (
-            <>
-              <Button
-                size="sm"
-                onClick={() => void p.editor.flush().catch(() => {})}
-              >
-                {p.t("retry")}
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  const u = URL.createObjectURL(
-                    new Blob([JSON.stringify(p.editor.current, null, 2)], {
-                      type: "application/json",
-                    }),
-                  );
-                  const a = document.createElement("a");
-                  a.href = u;
-                  a.download = project.name + ".json";
-                  a.click();
-                  URL.revokeObjectURL(u);
-                }}
-              >
-                {p.t("exportDraft")}
-              </Button>
-            </>
-          )}
+          <span>{progress || error || state.error || textJobs.error || mediaJobs.error}</span>
           {error && (
             <Tool
               label={p.t("close")}
@@ -1663,17 +1594,7 @@ function CanvasBody(p: CanvasProps) {
           muted={muted}
           onMutedChange={setMuted}
           onClose={() => setPreview(null)}
-          onSave={() => {
-            setAssetDraft([
-              {
-                kind: preview.data.kind as "image" | "video",
-                media: preview.data.media,
-                asset: preview.data.asset,
-              },
-            ]);
-            setPanel(null);
-            setPreview(null);
-          }}
+          saveToLibrary
         />
       )}
       {mediaConfig && (

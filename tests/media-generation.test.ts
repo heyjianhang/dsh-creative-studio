@@ -10,6 +10,7 @@ import {
   MediaGenerations,
   type MediaJobTable,
 } from "../src/host/media-generation.ts";
+import { Projects } from "../src/host/projects.ts";
 import { Uploads } from "../src/host/uploads.ts";
 import {
   buildMediaPayload,
@@ -1067,4 +1068,101 @@ test("generating from an uploaded image keeps the original and attaches it to th
   );
   assert.equal(payload.image, "data:image/png;base64,aW1n");
   await queue.close();
+});
+
+test("Host applies image and video results without a mounted canvas and recovers unacknowledged results after restart", async () => {
+  for (const kind of ["image", "video"] as const) {
+    const f = await fixture(kind);
+    const stored = new Map([[f.project.id, structuredClone(f.project)]]);
+    const projects = new Projects({
+      get: (id) => stored.get(id),
+      entries: () => stored.entries(),
+      put: async (id, p) => {
+        stored.set(id, structuredClone(p));
+      },
+      delete: async (id) => {
+        stored.delete(id);
+      },
+    });
+    let posts = 0,
+      failAck = true;
+    const table: MediaJobTable = {
+      ...f.table,
+      put: async (id, job) => {
+        if (failAck && job.applied) throw new Error("ack disk full");
+        await f.table.put(id, job);
+      },
+    };
+    const fetcher: typeof fetch = async (_url, init) => {
+      if (init?.method === "POST") {
+        posts++;
+        return kind === "image"
+          ? imageResponse()
+          : Response.json({ id: "remote-video" });
+      }
+      if (String(_url).includes("tasks/"))
+        return Response.json({
+          status: "succeeded",
+          content: { video_url: "https://cdn.test/video.mp4" },
+        });
+      return new Response("media");
+    };
+    const apply = async (job: MediaJob) => {
+      await projects.transform(job.projectId, (p) => applyMediaResult(p, job));
+    };
+    const queue = new MediaGenerations(
+      table,
+      f.settings,
+      reader,
+      f.save,
+      fetcher,
+      1,
+      undefined,
+      apply,
+    );
+    const batchId = randomUUID();
+    try {
+      await queue.restore();
+      await queue.start(f.project, "node", batchId);
+      await until(() =>
+        queue
+          .list(f.project.id)
+          .some((j) => j.status === "completed" && !j.applied && !!j.error),
+      );
+      assert.equal(
+        projects.get(f.project.id).nodes[0]!.data.media?.id,
+        f.saved[0]!.id,
+      );
+      assert.equal(posts, 1);
+      await assert.rejects(
+        queue.start(f.project, "another-node", batchId),
+        /不匹配/,
+      );
+      assert.equal((await queue.start(f.project, "node", batchId)).length, 1);
+    } finally {
+      await queue.close();
+    }
+    failAck = false;
+    const resumed = new MediaGenerations(
+      table,
+      f.settings,
+      reader,
+      f.save,
+      fetcher,
+      1,
+      undefined,
+      apply,
+    );
+    try {
+      await resumed.restore();
+      await resumed.applyResults(f.project.id);
+      assert.equal(resumed.list(f.project.id)[0]!.applied, true);
+      assert.equal(resumed.list(f.project.id)[0]!.error, undefined);
+      assert.equal(projects.get(f.project.id).nodes.length, 1);
+      assert.equal(projects.get(f.project.id).revision, 1);
+      assert.equal(posts, 1);
+    } finally {
+      await resumed.close();
+    }
+  }
 });

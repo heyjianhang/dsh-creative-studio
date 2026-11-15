@@ -14,6 +14,17 @@ export const mediaProviders = {
 } as const;
 export type MediaProviderId = keyof typeof mediaProviders;
 
+/** The asset library calls the first-party multimodal embedding endpoint. */
+export function supportsArkEmbedding(connection: {
+  mode: MediaProviderId;
+  baseUrl: string;
+}) {
+  return (
+    connection.mode === "native" &&
+    connection.baseUrl.replace(/\/+$/, "") === mediaProviders.native.baseUrl
+  );
+}
+
 /** Custom gateways remain configurable; the official host has distinct routes. */
 export function validateProviderRoute(mode: MediaProviderId, baseUrl: string) {
   const url = new URL(baseUrl);

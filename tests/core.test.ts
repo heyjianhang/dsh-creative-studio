@@ -10,6 +10,7 @@ import {
 } from "../src/host/projects.ts";
 import { Uploads } from "../src/host/uploads.ts";
 import { Editor } from "../src/client/editor.ts";
+import { isProjectConflict } from "../src/shared/project-merge.ts";
 import { nodeSchema, type Project } from "../src/shared/contracts.ts";
 
 function memory() {
@@ -56,6 +57,61 @@ test("concurrent editors cannot overwrite a newer revision", async () => {
   assert.equal(results[1].status, "rejected");
   assert.equal(new Projects(table).get(p.id).name, "First");
   assert.equal(svc.get(p.id).revision, 1);
+});
+
+test("autosave merges a generated result with a local edit and undo retains the result", async () => {
+  const { table } = memory();
+  const projects = new Projects(table);
+  const project = await projects.create("Project");
+  const node = nodeSchema.parse({
+    id: "text", type: "creative", position: { x: 0, y: 0 },
+    data: { kind: "text", label: "正文", text: "Draft" },
+  });
+  const base = await projects.save({ ...project, nodes: [node] });
+  const editor = new Editor(
+    (p) => projects.save(p), () => {}, () => {}, async (id) => projects.get(id),
+  );
+  editor.load(base);
+  editor.change({ ...base, nodes: [{ ...node, position: { x: 100, y: 200 } }] });
+  const generated = await projects.transform(base.id, (p) => ({
+    ...p,
+    nodes: [{ ...node, data: { ...node.data, text: "Generated" } }],
+  }));
+  await editor.flush();
+  assert.equal(editor.current?.revision, generated.revision + 1);
+  assert.deepEqual(projects.get(base.id).nodes[0]?.position, { x: 100, y: 200 });
+  assert.equal(editor.current?.nodes[0]?.data.text, "Generated");
+  editor.undo();
+  await editor.flush();
+  assert.deepEqual(projects.get(base.id).nodes[0]?.position, { x: 0, y: 0 });
+  assert.equal(projects.get(base.id).nodes[0]?.data.text, "Generated");
+  editor.dispose();
+});
+
+test("overlapping edits retain the draft until the user reloads the saved version", async () => {
+  const { table } = memory();
+  const projects = new Projects(table);
+  const base = await projects.create("Project");
+  let draft: Project | undefined;
+  const editor = new Editor(
+    (p) => projects.save(p), () => {}, (p) => { draft = p; }, async (id) => projects.get(id),
+  );
+  editor.load(base);
+  editor.change({ ...base, name: "Draft" });
+  const remote = await projects.save({ ...base, name: "Saved elsewhere" });
+  await assert.rejects(editor.flush(), isProjectConflict);
+  assert.equal(editor.conflict, true);
+  assert.equal(draft?.name, "Draft");
+  assert.deepEqual(projects.get(base.id), remote);
+  editor.load(remote);
+  editor.restoreDraft(draft!);
+  assert.equal(editor.current?.name, "Draft");
+  assert.equal(editor.conflict, true);
+  await editor.reload();
+  assert.deepEqual(editor.current, remote);
+  assert.equal(draft, undefined);
+  assert.equal(editor.dirty, false);
+  editor.dispose();
 });
 
 test("failed storage writes preserve the previous project", async () => {

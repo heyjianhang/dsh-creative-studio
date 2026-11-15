@@ -10,6 +10,8 @@ import {
 import {
   modelFromDiscovery,
   modelKind,
+  type DiscoveredModel,
+  type EmbeddingModel,
   type MediaModel,
   type ModelDiscovery,
 } from "../shared/media-contracts.ts";
@@ -18,6 +20,9 @@ import { Choice } from "./media-controls.tsx";
 import { Icon } from "./icons.tsx";
 import css from "./studio.module.css";
 
+const supported = (model: DiscoveredModel) =>
+  model.kind === "embedding" || !!model.capabilities;
+
 export function MediaModelPicker({
   p,
   mode,
@@ -25,13 +30,15 @@ export function MediaModelPicker({
   onAdd,
   onClose,
   replacing,
+  allowEmbedding,
 }: {
   p: Shared;
   mode: "native" | "plan";
-  added: MediaModel[];
-  onAdd(models: MediaModel[]): Promise<void>;
+  added: readonly { model: string }[];
+  onAdd(models: MediaModel[], embeddings: EmbeddingModel[]): Promise<void>;
   onClose(): void;
   replacing?: MediaModel;
+  allowEmbedding: boolean;
 }) {
   const [data, setData] = useState<ModelDiscovery>(),
     [error, setError] = useState(""),
@@ -61,7 +68,7 @@ export function MediaModelPicker({
       setData(next);
       setSelected((ids) =>
         ids.filter((id) =>
-          next.models.some((m) => m.model === id && m.capabilities),
+          next.models.some((m) => m.model === id && supported(m)),
         ),
       );
     } catch (e) {
@@ -75,22 +82,23 @@ export function MediaModelPicker({
     return () => controller.current?.abort();
   }, [mode, p.request]);
   const existing = new Set(added.map((m) => m.model));
-  const models = (data?.models ?? [])
+  const available = (data?.models ?? []).filter((m) =>
+    replacing
+      ? m.kind === modelKind(replacing)
+      : allowEmbedding || m.kind !== "embedding",
+  );
+  const models = available
     .filter(
       (m) =>
-        (!replacing || m.kind === modelKind(replacing)) &&
         (kind === "all" || m.kind === kind) &&
         `${m.name} ${m.model}`.toLowerCase().includes(query.toLowerCase()),
     )
     .sort(
       (a, b) =>
         Number(a.retiring) - Number(b.retiring) ||
-        Number(!a.capabilities) - Number(!b.capabilities),
+        Number(!supported(a)) - Number(!supported(b)),
     );
-  const candidates =
-    data?.models.filter(
-      (m) => m.capabilities && (!replacing || m.kind === modelKind(replacing)),
-    ) ?? [];
+  const candidates = available.filter(supported);
   const baseItem = candidates.find((m) => m.model === base);
   const validId = /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,199}$/.test(modelId.trim());
   const count = selected.filter((id) => !existing.has(id)).length;
@@ -99,29 +107,31 @@ export function MediaModelPicker({
     setSubmitting(true);
     setError("");
     try {
-      if (manual) {
-        if (!baseItem || !validId || existing.has(modelId.trim())) return;
-        const m = modelFromDiscovery(baseItem);
-        await onAdd([
-          {
-            ...m,
-            model: modelId.trim(),
-            name: modelId.trim().slice(0, 120),
-            capabilityModel: baseItem.model,
-          },
-        ]);
-      } else {
-        await onAdd(
-          (data?.models ?? [])
-            .filter(
-              (m) =>
-                selected.includes(m.model) &&
-                !existing.has(m.model) &&
-                m.capabilities,
-            )
-            .map(modelFromDiscovery),
-        );
+      if (manual && (!baseItem || !validId || existing.has(modelId.trim())))
+        return;
+      const chosen =
+        manual && baseItem
+          ? [baseItem]
+          : candidates.filter(
+              (m) => selected.includes(m.model) && !existing.has(m.model),
+            );
+      const generation: MediaModel[] = [];
+      const embeddings: EmbeddingModel[] = [];
+      for (const item of chosen) {
+        const model = manual ? modelId.trim() : item.model;
+        const name = manual ? model.slice(0, 120) : item.name;
+        if (item.kind === "embedding") {
+          embeddings.push({
+            id: crypto.randomUUID(),
+            model,
+            name,
+            enabled: true,
+          });
+        } else {
+          generation.push({ ...modelFromDiscovery(item), model, name });
+        }
       }
+      await onAdd(generation, embeddings);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -190,7 +200,10 @@ export function MediaModelPicker({
             id={tabsId}
             label={p.t("mediaModels")}
             value={kind}
-            options={(["all", "image", "video"] as const).map((value) => ({
+            options={(allowEmbedding && !replacing
+              ? (["all", "image", "video", "embedding"] as const)
+              : (["all", "image", "video"] as const)
+            ).map((value) => ({
               value,
               label: p.t(value),
             }))}
@@ -224,7 +237,7 @@ export function MediaModelPicker({
               ))
             : models.map((m) => {
                 const disabled =
-                  existing.has(m.model) || !m.capabilities || submitting;
+                  existing.has(m.model) || !supported(m) || submitting;
                 return (
                   <div
                     key={m.model}
@@ -268,9 +281,11 @@ export function MediaModelPicker({
                       <small>
                         {m.retiring
                           ? p.t("modelRetiring")
-                          : m.capabilities
-                            ? `${m.capabilities.resolutions.join(" · ")}${m.kind === "video" ? ` · ${m.capabilities.durations[0]}–${m.capabilities.durations.at(-1)}s` : ""}`
-                            : p.t("modelUnadapted")}
+                          : m.kind === "embedding"
+                            ? p.t("embeddingUse")
+                            : m.capabilities
+                              ? `${m.capabilities.resolutions.join(" · ")}${m.kind === "video" ? ` · ${m.capabilities.durations[0]}–${m.capabilities.durations.at(-1)}s` : ""}`
+                              : p.t("modelUnadapted")}
                       </small>
                     </div>
                     <span className={css.discoveryType}>

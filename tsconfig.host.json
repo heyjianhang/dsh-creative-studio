@@ -7,7 +7,17 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "resolveJsonModule": true
   },
-  "include": ["src/host/**/*.ts", "src/shared/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/host/**/*.ts",
+    "src/shared/**/*.ts",
+    "tests/**/*.ts",
+    "src/asset-library/host/**/*",
+    "src/asset-library/shared/**/*.ts",
+    "src/index.ts"
+  ]
 }

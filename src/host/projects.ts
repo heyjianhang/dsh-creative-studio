@@ -1,42 +1,19 @@
 import { randomUUID } from "node:crypto";
+import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
+import { validateGraph } from "../shared/project-graph.ts";
+import { projectConflictCode } from "../shared/project-merge.ts";
+
+export { validateGraph } from "../shared/project-graph.ts";
 import {
   projectSchema,
   type Project,
-  type Graph,
+  type CanvasTemplateContent,
 } from "../shared/contracts.ts";
 export interface ProjectTable {
   get(id: string): Project | undefined;
   entries(): Iterable<readonly [string, Project]>;
   put(id: string, p: Project): Promise<unknown>;
   delete(id: string): Promise<unknown>;
-}
-export function validateGraph(g: Graph) {
-  const ids = new Set(g.nodes.map((n) => n.id));
-  if (ids.size !== g.nodes.length) throw new Error("节点 ID 重复");
-  const edges = new Set<string>();
-  const adj = new Map<string, string[]>();
-  for (const e of g.edges) {
-    if (
-      edges.has(e.id) ||
-      !ids.has(e.source) ||
-      !ids.has(e.target) ||
-      e.source === e.target
-    )
-      throw new Error("连线无效");
-    edges.add(e.id);
-    adj.set(e.source, [...(adj.get(e.source) ?? []), e.target]);
-  }
-  const done = new Set<string>(),
-    path = new Set<string>();
-  function visit(n: string) {
-    if (path.has(n)) throw new Error("不能创建循环引用");
-    if (done.has(n)) return;
-    path.add(n);
-    for (const target of adj.get(n) ?? []) visit(target);
-    path.delete(n);
-    done.add(n);
-  }
-  for (const n of ids) visit(n);
 }
 export class Projects {
   private tail = Promise.resolve();
@@ -59,11 +36,20 @@ export class Projects {
     if (!p) throw new Error("项目不存在或已删除");
     return structuredClone(p);
   }
-  create(name: string) {
+  create(name: string, requestId?: string, content?: CanvasTemplateContent) {
     return this.serial(async () => {
+      if (requestId) {
+        projectSchema.shape.id.parse(requestId);
+        const existing = this.table.get(requestId);
+        if (existing) {
+          if (existing.name !== name.trim())
+            throw new Error("创建请求编号已用于另一个项目");
+          return structuredClone(existing);
+        }
+      }
       const now = new Date().toISOString();
       const p = projectSchema.parse({
-        id: randomUUID(),
+        id: requestId ?? randomUUID(),
         name,
         revision: 0,
         createdAt: now,
@@ -71,9 +57,34 @@ export class Projects {
         nodes: [],
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
+        ...content,
       });
+      if (content) validateGraph(p);
       await this.table.put(p.id, p);
       return p;
+    });
+  }
+  /** Merge a generated result into the latest project under the same write queue.
+   * @param id Existing target project.
+   * @param change Pure transform; returning the original object performs no write.
+   * @returns Latest persisted project, without overwriting concurrent user edits.
+   */
+  transform(id: string, change: (project: Project) => Project) {
+    return this.serial(async () => {
+      const previous = this.get(id);
+      const changed = change(previous);
+      if (changed === previous) return previous;
+      const next = projectSchema.parse({
+        ...changed,
+        id,
+        sessionId: previous.sessionId,
+        createdAt: previous.createdAt,
+        revision: previous.revision + 1,
+        updatedAt: new Date().toISOString(),
+      });
+      validateGraph(next);
+      await this.table.put(id, next);
+      return next;
     });
   }
   save(input: Project) {
@@ -81,8 +92,10 @@ export class Projects {
       const p = projectSchema.parse(input);
       const old = this.get(p.id);
       if (old.revision !== p.revision)
-        throw new Error(
-          "项目已在其他位置更新。请保留草稿后重新载入，避免覆盖修改。",
+        throw new RemoteError(
+          projectConflictCode,
+          "画布已有新版本，修改仍保留在草稿中",
+          {},
         );
       validateGraph(p);
       const next = {

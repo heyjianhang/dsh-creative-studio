@@ -1,3 +1,13 @@
+import type {} from "@actvero/dsh-capability-ui/client/contracts";
+import type {
+  WorkbenchBodyProps,
+  WorkbenchHeaderProps,
+} from "@actvero/dsh-capability-ui/client/contracts";
+import { useEffect, useSyncExternalStore } from "react";
+import manifest from "../../package.json";
+import metadata from "../../workbench.json";
+import { WorkbenchHeader } from "./workbench-header.tsx";
+import * as assetLibrary from "../asset-library/client/index.tsx";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
@@ -28,41 +38,31 @@ import {
 import { disposeMediaSession } from "./media-source.ts";
 import { Editor } from "./editor.ts";
 import type { Injected, Request, Shared, State } from "./props.ts";
-import { Page, StudioSurface, Settings } from "./views.tsx";
+import { Page, Settings } from "./views.tsx";
 import { zh, en } from "./locales.ts";
 import css, { cssText } from "./studio.module.css";
+import { cssText as collectionCSS } from "./collection.module.css";
 import flowCSS from "@xyflow/react/dist/base.css";
+import canvasPreview from "../../assets/workbench-canvas.jpg";
+import assetsPreview from "../../assets/workbench-assets.jpg";
+import templatesPreview from "../../assets/workbench-templates.jpg";
 declare module "@deepseek-ai/dsh-client-ui-slots" {
-  interface SlotMap {
-    "creative.agent": { kind: "single"; scope: "session" };
-  }
+  interface SlotMap {}
 }
 declare module "@deepseek-ai/dsh-api-session-controller/client" {
   interface SessionReferenceSourceMap {
     creativeStudio: unknown;
   }
 }
-export const inject = ["slots", "layout", "locale", "remote", "sessions"];
+export const inject = [
+  "slots",
+  "layout",
+  "locale",
+  "remote",
+  "sessions",
+  "actveroWorkbenches",
+];
 const PANEL = "creative-studio" as MainPanelId;
-function FixedChat(p: ConversationViewsProps) {
-  return (
-    <div className={css.agentViews}>
-      {p.renderSlot("conversation.session", { view: "chat" })}
-    </div>
-  );
-}
-function Agent(p: PropsRuntime<"creative.agent"> & PropsRenderFactories) {
-  const session = p.useSession((s) => s);
-  return p.renderFactorySlot(
-    "conversation.content",
-    {
-      variant: "embedded",
-      phase: session.openState === "loading" ? "settling" : "active",
-      hero: false,
-    },
-    { slots: { views: FixedChat } },
-  );
-}
 function Notices(p: Shared) {
   const text = p.useStudio((s) => s.notice);
   return text ? (
@@ -70,12 +70,27 @@ function Notices(p: Shared) {
   ) : null;
 }
 export async function apply(ctx: Context) {
+  const libraryViews = createSnapshotStore<Partial<assetLibrary.LibraryViews>>(
+    {},
+  );
+  ctx.plugin(assetLibrary, {
+    bindViews: (views: assetLibrary.LibraryViews) => {
+      libraryViews.set(views);
+      return () => libraryViews.set({});
+    },
+  });
+  const useLibraryViews = () =>
+    useSyncExternalStore(libraryViews.subscribe, libraryViews.getSnapshot);
+  function Library() {
+    const { Workspace } = useLibraryViews();
+    return Workspace ? <Workspace /> : null;
+  }
   try {
     ctx.effect(() => ctx.locale.register("creative-studio", { zh, en }));
     ctx.effect(() => {
       const el = document.createElement("style");
       el.dataset.plugin = "dsh-creative-studio";
-      el.textContent = flowCSS + "\n" + cssText;
+      el.textContent = flowCSS + "\n" + cssText + "\n" + collectionCSS;
       document.head.append(el);
       return () => el.remove();
     });
@@ -112,6 +127,7 @@ export async function apply(ctx: Context) {
               current: editor.current,
               status: editor.status,
               error: editor.error,
+              conflict: editor.conflict,
               canUndo: editor.canUndo,
               canRedo: editor.canRedo,
             });
@@ -127,6 +143,7 @@ export async function apply(ctx: Context) {
               });
             }
           },
+          (id) => request("get", { id }),
         );
         const refresh = async () => {
           const [projects, capabilities] = await Promise.all([
@@ -137,24 +154,16 @@ export async function apply(ctx: Context) {
         };
         const openProject = async (id: string) => {
           await editor.flush();
-          let p = await request("get", { id });
+          const project = await request("get", { id });
+          editor.load(project);
           try {
             const draft = projectSchema.safeParse(
               JSON.parse(localStorage.getItem(draftKey) ?? "null"),
             );
-            if (draft.success && draft.data.id === id) {
-              if (draft.data.revision === p.revision) {
-                editor.load(p);
-                editor.change(draft.data);
-                return;
-              }
-              store.set({
-                ...store.getSnapshot(),
-                notice: ctx.locale.bind("creative-studio")("recover"),
-              });
-            }
-          } catch {}
-          editor.load(p);
+            if (draft.success) editor.restoreDraft(draft.data);
+          } catch (_error) {
+            // An unreadable browser draft does not prevent opening the saved project.
+          }
         };
         const createProject = async (name: string) => {
           await editor.flush();
@@ -173,26 +182,9 @@ export async function apply(ctx: Context) {
           });
           await refresh();
         };
-        const sessionStarts = new Map<string, Promise<SessionId>>();
-        const resolveSession = (projectId: string) => {
-          let pending = sessionStarts.get(projectId);
-          if (!pending) {
-            pending = (async () => {
-              const info = await request("session", { projectId });
-              if (info.sessionId) return info.sessionId as SessionId;
-              const id = await ctx.sessions.create({ cwd: info.cwd });
-              await request("session", { projectId, sessionId: id });
-              return id;
-            })();
-            sessionStarts.set(projectId, pending);
-            void pending
-              .finally(() => sessionStarts.delete(projectId))
-              .catch(() => {});
-          }
-          return pending;
-        };
         const injected = (): Injected => ({
           hooks: { studio: store },
+          renderLibrary: () => <Library />,
           focusNode: (id: string) =>
             store.set({ ...store.getSnapshot(), focusNodeId: id }),
           request,
@@ -202,71 +194,73 @@ export async function apply(ctx: Context) {
           openProject,
           createProject,
           notify: (notice) => store.set({ ...store.getSnapshot(), notice }),
-          retainAgent: async (projectId) => {
-            const sessionId = await resolveSession(projectId);
-            const reference = ctx.sessions.retain(sessionId, {
-              source: "creativeStudio",
-            });
-            try {
-              await reference.ready;
-              return reference;
-            } catch (e) {
-              reference.release();
-              throw e;
-            }
-          },
+          openSettings: () =>
+            ctx.actveroWorkbenches.openSettings(manifest.name),
         });
-        ctx.slots.inject("main", () =>
-          ctx.slots.register(
+        const shared = () => ({
+          ...injected(),
+          t: ctx.locale.bind("creative-studio"),
+          useStudio: <T,>(selector: (state: State) => T) =>
+            selector(useSyncExternalStore(store.subscribe, store.getSnapshot)),
+        });
+        let restoredConversation: string | null = null;
+        let restoredLocation: WorkbenchBodyProps["workbench"]["location"] =
+          null;
+        function Body(p: WorkbenchBodyProps) {
+          const target =
+            p.workbench.location?.objectId ?? p.workbench.object?.id;
+          useEffect(() => {
+            const locationChanged =
+              !!p.workbench.location &&
+              restoredLocation !== p.workbench.location;
+            const conversationChanged =
+              !!p.workbench.sessionId &&
+              restoredConversation !== p.workbench.sessionId;
+            restoredLocation = p.workbench.location;
+            restoredConversation = p.workbench.sessionId;
+            if (
+              (locationChanged || conversationChanged) &&
+              target &&
+              editor.current?.id !== target
+            )
+              void openProject(target).catch((error) =>
+                injected().notify(error.message),
+              );
+          }, [target, p.workbench.location, p.workbench.sessionId]);
+          return <Page {...p} {...shared()} workbench={p.workbench} />;
+        }
+        function Header(p: WorkbenchHeaderProps) {
+          return <WorkbenchHeader {...p} {...shared()} />;
+        }
+        function WorkbenchSettings() {
+          const { Settings: LibrarySettings } = useLibraryViews();
+          return <Settings {...shared()} LibrarySettings={LibrarySettings} />;
+        }
+        ctx.effect(() =>
+          ctx.actveroWorkbenches.register(
             {
-              name: "main",
-              key: PANEL,
-              locale: "creative-studio",
-              inject: injected,
+              ...metadata,
+              id: manifest.name,
+              version: manifest.version,
+              previewUrls: [canvasPreview, assetsPreview, templatesPreview],
+              display: { sidebar: "focus", ai: "hide" },
+              author: "本地开发",
+              tags: ["创作", "素材", "画布"],
             },
-            Page,
-          ),
-        );
-        ctx.slots.inject("shell.overlay", () =>
-          ctx.slots.register(
+            Body,
             {
-              name: "shell.overlay",
-              id: "creative-studio.surface",
-              locale: "creative-studio",
-              inject: injected,
-              children: {
-                "creative.agent": { kind: "single", scope: "session" },
+              header: Header,
+              catalogButton: "hide",
+              conversationTarget: async () => {
+                const id = editor.current?.id;
+                await editor.flush();
+                return id
+                  ? (id as import("@actvero/dsh-capability-ui/client/contracts").WorkbenchObjectId)
+                  : null;
               },
+              objectNavigation: true,
+              settings: { component: WorkbenchSettings },
             },
-            StudioSurface,
-          ),
-        );
-        ctx.slots.inject("creative.agent", () =>
-          ctx.slots.register({ name: "creative.agent" }, Agent),
-        );
-        ctx.slots.inject("sidebar.panellist", () =>
-          ctx.slots.register(
-            {
-              name: "sidebar.panellist",
-              id: PANEL,
-              order: 16,
-              locale: "creative-studio",
-              label: () => ctx.locale.bind("creative-studio")("title"),
-            },
-            () => <IconSparkleRegular size={20} />,
-          ),
-        );
-        ctx.slots.inject("settings.section", () =>
-          ctx.slots.register(
-            {
-              name: "settings.section",
-              id: PANEL,
-              order: 61,
-              label: () => ctx.locale.bind("creative-studio")("title"),
-              locale: "creative-studio",
-              inject: injected,
-            },
-            Settings,
           ),
         );
         ctx.slots.inject("shell.overlay", () =>
@@ -289,7 +283,8 @@ export async function apply(ctx: Context) {
             reading ||
             editor.dirty ||
             !editor.current ||
-            ctx.layout.panelInfo.getSnapshot().activePanelId !== PANEL
+            ctx.layout.panelInfo.getSnapshot().activePanelId !==
+              "actvero-workbench-business"
           )
             return;
           reading = true;
@@ -299,7 +294,7 @@ export async function apply(ctx: Context) {
               if (
                 editor.current?.id === id &&
                 !editor.dirty &&
-                p.revision !== editor.current.revision
+                p.revision > editor.current.revision
               )
                 editor.load(p);
             })

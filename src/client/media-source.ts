@@ -68,7 +68,7 @@ export function seedMedia(
 
 export async function readMediaBlob(
   request: Request,
-  projectId: string,
+  owner: string | { templateId: string },
   data: Source,
   preview: boolean,
   signal: AbortSignal,
@@ -76,11 +76,13 @@ export async function readMediaBlob(
   const read = async (offset: number) => {
     signal.throwIfAborted();
     const result = data.media
-      ? await request(
+      ? typeof owner === "string"
+        ? await request(
           "media",
-          { projectId, mediaId: data.media.id, offset },
+          { projectId: owner, mediaId: data.media.id, offset },
           signal,
         )
+        : await request("canvasTemplateCover", { templateId: owner.templateId, mediaId: data.media.id, offset }, signal)
       : data.asset
         ? await request(
             "assetMedia",

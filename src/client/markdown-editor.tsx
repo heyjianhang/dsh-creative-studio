@@ -13,6 +13,7 @@ import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownS
 import { DividerNode, markdownNodes, markdownTransformers } from "./markdown-document.ts";
 import type { CanvasProps } from "./props.ts";
 import { Icon } from "./icons.tsx";
+import { SaveFeedback } from "./save-feedback.tsx";
 import css from "./studio.module.css";
 
 type Props = {
@@ -131,7 +132,11 @@ export function MarkdownEditor(props: Props) {
           <Button size="sm" aria-pressed={source} onClick={toggleSource}>{source ? p.t("formattedText") : "Markdown"}</Button>
         </div>
       </header>
-      {saved.error && <div className={css.mdError} role="alert">{saved.error}<Button size="sm" onClick={() => void p.editor.flush().catch(() => {})}>{p.t("retry")}</Button></div>}
+      {saved.status === "error" && (
+        <div className={css.mdError} role="alert">
+          <SaveFeedback p={p} message={saved.error ?? ""} conflict={saved.conflict} />
+        </div>
+      )}
       <div className={css.mdToolbar} role="toolbar" aria-label={p.t("textFormatting")}>
         <div className={css.mdTools}>
         {tool(p.t("copyText"), <Icon name="copy" size={19} />, () => { void writeClipboard(current.current.value).then((ok) => p.notify(p.t(ok ? "copied" : "copyFailed"))).catch(() => p.notify(p.t("copyFailed"))); })}

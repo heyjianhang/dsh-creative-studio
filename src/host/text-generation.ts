@@ -39,6 +39,7 @@ export class TextGenerations {
     private table: GenerationTable,
     private run: TextRunner,
     private timeoutMs = 180000,
+    private applyResult?: (job: Generation) => Promise<void>,
   ) {}
   private serial<T>(fn: () => Promise<T>) {
     const p = this.tail.then(fn);
@@ -55,6 +56,45 @@ export class TextGenerations {
       }
       this.rows.set(id, job);
     }
+    await this.applyResults();
+  }
+  /** Apply completed text on the Host without requiring an open canvas.
+   * @param projectId Optional project filter.
+   * @returns Settles after eligible results have been saved; failed applications remain retryable.
+   */
+  applyResults(projectId?: string) {
+    return this.serial(async () => {
+      if (!this.applyResult) return;
+      for (const job of this.rows.values()) {
+        if (
+          job.status !== "completed" ||
+          job.applied ||
+          (projectId && job.projectId !== projectId)
+        )
+          continue;
+        try {
+          await this.applyResult(structuredClone(job));
+          job.applied = true;
+          job.error = undefined;
+          await this.table.put(job.id, structuredClone(job));
+        } catch (error) {
+          job.applied = false;
+          job.error =
+            "生成已完成，结果尚未写入画布：" +
+            (error instanceof Error ? error.message : String(error));
+          try {
+            await this.table.put(job.id, structuredClone(job));
+          } catch (persistenceError) {
+            // Keep the completed job retryable in memory; its durable unacknowledged result is replayed at restart.
+            job.error +=
+              "；任务状态未保存，请检查存储后再次查询：" +
+              (persistenceError instanceof Error
+                ? persistenceError.message
+                : String(persistenceError));
+          }
+        }
+      }
+    });
   }
   list(projectId: string) {
     return structuredClone(
@@ -267,6 +307,7 @@ export class TextGenerations {
         job.error = "生成记录保存失败，请检查磁盘后重试";
       }
     }
+    await this.applyResults(job.projectId);
   }
   async close() {
     this.closed = true;

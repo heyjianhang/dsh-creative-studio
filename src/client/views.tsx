@@ -1,50 +1,31 @@
 import { MediaSettings } from "./media-settings.tsx";
-import { useRef, useState } from "react";
+import { useId, useRef, useState, type ComponentType } from "react";
 import {
   Button,
   Input,
   Modal,
-  Menu,
-  Tooltip,
+  SegmentedControl,
   useModalLayer,
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PageProps, CanvasProps, Shared } from "./props.ts";
+import type { LibrarySettingsNavigation } from "../asset-library/client/props.ts";
 import type { Project } from "../shared/contracts.ts";
 import { Icon } from "./icons.tsx";
 import { Canvas } from "./canvas.tsx";
-import { MediaView } from "./media.tsx";
+import { ProjectCard, ProjectCardMenu } from "./project-card.tsx";
 import { TemplateLibrary } from "./template-library.tsx";
 import {
   templateNodeData,
   templateReferenceGraph,
 } from "../shared/template-application.ts";
 import css from "./studio.module.css";
-export function StudioSurface(p: CanvasProps) {
-  const active = p.usePanelInfo(
-    (info) => info.activePanelId === "creative-studio",
-  );
-  const current = p.useStudio((s) => s.current?.id);
-  const surface = useRef<HTMLDivElement>(null);
-  useModalLayer(surface, active && !!current, () => {
-    void p.navigate("projects").catch((e) => p.notify(e.message));
-  });
-  if (!active || !current) return null;
-  return (
-    <div
-      ref={surface}
-      className={css.studioSurface}
-      role="dialog"
-      aria-modal="true"
-      aria-label={p.t("title")}
-      tabIndex={-1}
-      data-studio-surface
-      data-shortcut-modal="creative-studio"
-    >
-      <Canvas key={current} {...p} />
-    </div>
-  );
-}
-function ProjectCard({
+import ui from "./collection.module.css";
+import {
+  CollectionSearch,
+  CollectionTypes,
+  CollectionSelect,
+} from "./collection-ui.tsx";
+function ProjectListCard({
   project,
   p,
   onRename,
@@ -55,71 +36,31 @@ function ProjectCard({
   onRename(): void;
   onDelete(): void;
 }) {
-  const [menu, setMenu] = useState(false);
   const cover = project.nodes.find(
     (n) => n.data.kind === "image" && (n.data.media || n.data.asset),
   );
   return (
-    <article className={css.projectCard}>
-      <button
-        className={css.projectOpen}
-        onClick={() =>
-          void p.openProject(project.id).catch((e) => p.notify(e.message))
-        }
-      >
-        <div className={css.projectCover}>
-          {cover ? (
-            <MediaView
-              request={p.request}
-              projectId={project.id}
-              data={cover.data}
-              preview
-            />
-          ) : (
-            <div className={css.miniCanvas}>
-              <i />
-              <Icon
-                name={project.nodes.length ? "text" : "sparkle"}
-                size={30}
-              />
-              <i />
-            </div>
-          )}
-        </div>
-        <div className={css.projectInfo}>
-          <strong>{project.name}</strong>
-          <span>
-            {project.nodes.length} {p.t("nodes")}
-            <i>·</i>
-            {new Date(project.updatedAt).toLocaleDateString()}
-          </span>
-        </div>
-      </button>
-      <div className={css.projectMenu} data-open={menu}>
-        <Menu
-          open={menu}
-          onClose={() => setMenu(false)}
-          portal
-          anchor={
-            <Button
-              size="sm"
-              aria-label={project.name + " " + p.t("more")}
-              onClick={() => setMenu(!menu)}
-            >
-              <Icon name="more" />
-            </Button>
-          }
+    <ProjectCard
+      p={p}
+      name={project.name}
+      date={project.updatedAt}
+      count={project.nodes.length}
+      cover={cover?.data}
+      owner={{ projectId: project.id }}
+      onOpen={() =>
+        void p.openProject(project.id).catch((e) => p.notify(e.message))
+      }
+      actions={
+        <ProjectCardMenu
+          label={`${project.name} · ${p.t("more")}`}
           items={[
             { id: "rename", label: p.t("rename") },
             { id: "delete", label: p.t("delete") },
           ]}
-          onSelect={(id) => {
-            setMenu(false);
-            id === "rename" ? onRename() : onDelete();
-          }}
+          onSelect={(id) => (id === "rename" ? onRename() : onDelete())}
         />
-      </div>
-    </article>
+      }
+    />
   );
 }
 export function Page(p: PageProps) {
@@ -133,8 +74,7 @@ export function Page(p: PageProps) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [view, setView] = useState<"grid" | "list">("grid"),
-    [sort, setSort] = useState<"updated" | "nameSort">("updated"),
-    [sortOpen, setSortOpen] = useState(false);
+    [sort, setSort] = useState<"updated" | "nameSort">("updated");
   const openDialog = (
     kind: "create" | "rename" | "delete",
     project?: Project,
@@ -171,28 +111,10 @@ export function Page(p: PageProps) {
         ? a.name.localeCompare(b.name)
         : b.updatedAt.localeCompare(a.updatedAt),
     );
+  if (s.current)
+    return <Canvas key={s.current.id + ":" + p.editor.reloadCount} {...p} />;
   return (
-    <div className={css.page}>
-      <header className={css.studioHeader}>
-        <div className={css.studioBrand}>
-          <strong>{p.t("title")}</strong>
-        </div>
-        <nav className={css.studioTabs} aria-label={p.t("navigation")}>
-          {(["projects", "templates"] as const).map((page) => (
-            <Button
-              key={page}
-              aria-current={s.page === page ? "page" : undefined}
-              onClick={() =>
-                void p.navigate(page).catch((e) => p.notify(e.message))
-              }
-            >
-              <Icon name={page === "projects" ? "folder" : "grid"} size={18} />
-              {p.t(page)}
-            </Button>
-          ))}
-        </nav>
-        <div className={css.headerBalance} aria-hidden />
-      </header>
+    <div className={`${css.page} ${ui.surface}`}>
       {s.error && (
         <div className={css.error} role="alert">
           {s.error}
@@ -204,150 +126,147 @@ export function Page(p: PageProps) {
           </Button>
         </div>
       )}
-      <main className={css.projectContent} key={s.page}>
-        {s.page === "templates" ? (
-          <TemplateLibrary
-            p={p}
-            onUse={async (template, urls) => {
-              const project = await p.request("create", {
-                name: template.title.slice(0, 120),
-              });
-              let saved = false;
-              try {
-                const media = urls.length
-                  ? await p.request("templateMedia", {
-                      projectId: project.id,
-                      id: template.id,
-                      urls,
-                    })
-                  : [];
-                const graph = templateReferenceGraph(
-                  {
-                    id: crypto.randomUUID(),
-                    type: "creative",
-                    position: { x: media.length ? 420 : 180, y: 140 },
-                    data: templateNodeData(project, template),
-                  },
-                  media,
-                );
-                await p.request("save", {
-                  project: {
-                    ...project,
-                    nodes: graph.nodes,
-                    edges: graph.edges,
-                  },
+      <div className={css.managementLayout}>
+        <main
+          className={
+            s.page === "assets"
+              ? css.assetsContent
+              : s.page === "templates"
+                ? css.templateContent
+                : ui.content
+          }
+          key={s.page}
+        >
+          {s.page === "assets" ? (
+            p.renderLibrary()
+          ) : s.page === "templates" ? (
+            <TemplateLibrary
+              management
+              p={p}
+              onUseCanvas={async (id) => {
+                const project = await p.request("createFromCanvasTemplate", {
+                  id,
                 });
-                saved = true;
                 await p.openProject(project.id);
-                p.focusNode(graph.nodeId);
-                await p.refresh();
-              } catch (error) {
-                if (!saved)
-                  await p
-                    .request("removeProject", {
-                      id: project.id,
-                      revision: project.revision,
-                    })
-                    .catch(() => {});
-                throw error;
-              }
-            }}
-          />
-        ) : (
-          <>
-            <div className={css.projectToolbar}>
-              <div className={css.projectHeading}>
-                <h1>{p.t("projects")}</h1>
-                <span>
-                  {s.projects.length} {p.t("projectCount")}
-                </span>
-              </div>
-              <div className={css.projectActions}>
-                <div className={css.projectSearch}>
-                  <Icon name="search" size={18} />
-                  <Input
-                    aria-label={p.t("search")}
-                    placeholder={p.t("search")}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                </div>
-                <Menu
-                  open={sortOpen}
-                  onClose={() => setSortOpen(false)}
-                  selectedId={sort}
-                  portal
-                  anchor={
-                    <Button
-                      onClick={() => setSortOpen(!sortOpen)}
-                      aria-label={p.t("sort")}
-                      aria-expanded={sortOpen}
-                    >
-                      {p.t(sort)}
-                      <Icon name="down" size={16} />
-                    </Button>
-                  }
-                  items={(["updated", "nameSort"] as const).map((id) => ({
-                    id,
-                    label: p.t(id),
-                  }))}
-                  onSelect={(id) => {
-                    setSort(id as typeof sort);
-                    setSortOpen(false);
-                  }}
+              }}
+              onUse={async (template, urls) => {
+                const project = await p.request("create", {
+                  name: template.title.slice(0, 120),
+                });
+                let saved = false;
+                try {
+                  const media = urls.length
+                    ? await p.request("templateMedia", {
+                        projectId: project.id,
+                        id: template.id,
+                        urls,
+                      })
+                    : [];
+                  const graph = templateReferenceGraph(
+                    {
+                      id: crypto.randomUUID(),
+                      type: "creative",
+                      position: { x: media.length ? 420 : 180, y: 140 },
+                      data: templateNodeData(project, template),
+                    },
+                    media,
+                  );
+                  await p.request("save", {
+                    project: {
+                      ...project,
+                      nodes: graph.nodes,
+                      edges: graph.edges,
+                    },
+                  });
+                  saved = true;
+                  await p.openProject(project.id);
+                  p.focusNode(graph.nodeId);
+                  await p.refresh();
+                } catch (error) {
+                  if (!saved)
+                    await p
+                      .request("removeProject", {
+                        id: project.id,
+                        revision: project.revision,
+                      })
+                      .catch(() => {});
+                  throw error;
+                }
+              }}
+            />
+          ) : (
+            <>
+              <div className={ui.toolbar}>
+                <CollectionSearch
+                  aria-label={p.t("search")}
+                  placeholder={p.t("search")}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  clearLabel={p.t("clearSearch")}
+                  onClear={() => setQuery("")}
                 />
-                <div
-                  className={css.viewToggle}
-                  role="group"
-                  aria-label={p.t("view")}
-                >
-                  {(["grid", "list"] as const).map((mode) => (
-                    <Tooltip
-                      key={mode}
-                      label={p.t(mode === "grid" ? "gridView" : "listView")}
-                    >
-                      <Button
-                        aria-label={p.t(
-                          mode === "grid" ? "gridView" : "listView",
-                        )}
-                        aria-pressed={view === mode}
-                        onClick={() => setView(mode)}
-                      >
-                        <Icon name={mode} size={18} />
-                      </Button>
-                    </Tooltip>
+                <CollectionTypes<typeof view>
+                  value={view}
+                  label={p.t("view")}
+                  options={(["grid", "list"] as const).map((value) => ({
+                    value,
+                    label: p.t(value === "grid" ? "gridView" : "listView"),
+                    icon: <Icon name={value} size={16} />,
+                  }))}
+                  onChange={setView}
+                />
+                <div className={ui.resultTools}>
+                  <span className={ui.srOnly} role="status">
+                    {items.length} {p.t("projectCount")}
+                  </span>
+                  <CollectionSelect<typeof sort>
+                    compact
+                    label={p.t("sort")}
+                    value={sort}
+                    options={(["updated", "nameSort"] as const).map((id) => ({
+                      id,
+                      label: p.t(id),
+                    }))}
+                    onChange={setSort}
+                  />
+                  <Button
+                    variant="primary"
+                    onClick={() => openDialog("create")}
+                  >
+                    <Icon name="plus" size={16} />
+                    {p.t("create")}
+                  </Button>
+                </div>
+              </div>
+              {!items.length ? (
+                <div className={ui.empty}>
+                  <Icon name="search" size={36} />
+                  <h2>{p.t(query ? "noSearch" : "noProjects")}</h2>
+                  <Button
+                    onClick={() =>
+                      query ? setQuery("") : openDialog("create")
+                    }
+                  >
+                    {p.t(query ? "clearSearch" : "create")}
+                  </Button>
+                </div>
+              ) : (
+                <div className={ui.grid} data-view={view}>
+                  {items.map((project) => (
+                    <ProjectListCard
+                      key={project.id}
+                      project={project}
+                      p={p}
+                      onRename={() => openDialog("rename", project)}
+                      onDelete={() => openDialog("delete", project)}
+                    />
                   ))}
                 </div>
-                <Button variant="primary" onClick={() => openDialog("create")}>
-                  <Icon name="plus" />
-                  {p.t("create")}
-                </Button>
-              </div>
-            </div>
-            {query && !items.length ? (
-              <div className={css.empty}>
-                <Icon name="search" size={36} />
-                <h2>{p.t("noSearch")}</h2>
-                <Button onClick={() => setQuery("")}>
-                  {p.t("clearSearch")}
-                </Button>
-              </div>
-            ) : (
-              <div className={css.projects} data-view={view}>
-                {items.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    p={p}
-                    onRename={() => openDialog("rename", project)}
-                    onDelete={() => openDialog("delete", project)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </main>
+              )}
+            </>
+          )}
+        </main>
+      </div>
       <Modal
         open={!!dialog && !s.current}
         onClose={() => !busy && setDialog(null)}
@@ -406,6 +325,52 @@ export function Page(p: PageProps) {
     </div>
   );
 }
-export function Settings(p: Shared) {
-  return <MediaSettings {...p} />;
+/** Mount the model and asset settings under one workbench settings section. */
+export function Settings(
+  p: Shared & { LibrarySettings?: ComponentType<LibrarySettingsNavigation> },
+) {
+  const id = useId();
+  const [tab, setTab] = useState<"models" | "library">("models");
+  const { LibrarySettings } = p;
+  return (
+    <>
+      <div className={css.studioSettingsTabs}>
+        <SegmentedControl
+          id={id}
+          label={p.t("settings")}
+          value={tab}
+          options={[
+            { value: "models", label: p.t("settingsConnections") },
+            { value: "library", label: p.t("assets") },
+          ]}
+          onChange={setTab}
+        />
+      </div>
+      <div
+        role="tabpanel"
+        id={`${id}-models-panel`}
+        aria-labelledby={`${id}-models`}
+        hidden={tab !== "models"}
+      >
+        <MediaSettings {...p} />
+      </div>
+      <div
+        role="tabpanel"
+        id={`${id}-library-panel`}
+        aria-labelledby={`${id}-library`}
+        hidden={tab !== "library"}
+      >
+        {LibrarySettings ? (
+          <LibrarySettings
+            openModelSettings={() => {
+              setTab("models");
+              document.getElementById(`${id}-models`)?.focus();
+            }}
+          />
+        ) : (
+          <p role="status">{p.t("loadingAssetSettings")}</p>
+        )}
+      </div>
+    </>
+  );
 }

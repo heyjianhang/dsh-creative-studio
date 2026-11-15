@@ -6,7 +6,7 @@ await mkdir("lib", { recursive: true });
 await copyFile("resources/volc-catalog.json", "lib/volc-catalog.json");
 await copyFile("src/client/assets/LICENSE-lobe-icons", "lib/LICENSE-lobe-icons");
 await build({
-  entryPoints: ["src/host/index.ts"],
+  entryPoints: ["src/index.ts"],
   outfile: "lib/index.js",
   bundle: true,
   platform: "node",
@@ -16,19 +16,20 @@ await build({
   sourcemap: true,
 });
 await build({
-  entryPoints: ["src/client/index.tsx"],
+  entryPoints: ["src/client/index.ts"],
   outfile: "lib/client.js",
   bundle: true,
   platform: "browser",
   format: "cjs",
   target: "es2022",
   jsx: "automatic",
-  loader: { ".svg": "dataurl" },
+  loader: { ".svg": "dataurl", ".jpg": "dataurl" },
   sourcemap: true,
   external: [
     "react",
     "react/jsx-runtime",
     "react-dom",
+    "@actvero/dsh-capability-ui/client/contracts",
     "@deepseek-ai/cordis",
     "@deepseek-ai/dsh-client-store",
     "@deepseek-ai/dsh-client-ui-slots",

@@ -67,6 +67,7 @@ export class MediaGenerations {
       mode: "native" | "plan",
       signal: AbortSignal,
     ) => Promise<ModelDiscovery>,
+    private applyResult?: (job: MediaJob) => Promise<void>,
   ) {}
   private serial<T>(fn: () => Promise<T>) {
     const result = this.tail.then(fn);
@@ -95,6 +96,45 @@ export class MediaGenerations {
       this.rows.set(id, j);
     }
     this.pump();
+    await this.applyResults();
+  }
+  /** Save completed results on the Host, including after restart or a failed application.
+   * @param projectId Optional project filter.
+   * @returns Completes after all eligible results have been persisted or a write fails.
+   */
+  applyResults(projectId?: string) {
+    return this.serial(async () => {
+      if (!this.applyResult) return;
+      for (const job of this.rows.values()) {
+        if (
+          job.status !== "completed" ||
+          job.applied ||
+          (projectId && job.projectId !== projectId)
+        )
+          continue;
+        try {
+          await this.applyResult(structuredClone(job));
+          job.applied = true;
+          job.error = undefined;
+          await this.persist(job);
+        } catch (error) {
+          job.applied = false;
+          job.error =
+            "生成已完成，结果尚未写入画布：" +
+            (error instanceof Error ? error.message : String(error));
+          try {
+            await this.persist(job);
+          } catch (persistenceError) {
+            // Keep the completed job retryable in memory; its durable unacknowledged result is replayed at restart.
+            job.error +=
+              "；任务状态未保存，请检查存储后再次查询：" +
+              (persistenceError instanceof Error
+                ? persistenceError.message
+                : String(persistenceError));
+          }
+        }
+      }
+    });
   }
   list(projectId: string) {
     return [...this.rows.values()]
@@ -110,7 +150,11 @@ export class MediaGenerations {
       const previous = this.list(project.id).filter(
         (j) => j.batchId === requestId,
       );
-      if (previous.length) return previous;
+      if (previous.length) {
+        if (previous.some((job) => job.nodeId !== nodeId))
+          throw new Error("生成请求不匹配");
+        return previous;
+      }
       if (
         [...this.rows.values()].some(
           (j) => j.nodeId === nodeId && j.projectId === project.id && active(j),
@@ -552,6 +596,7 @@ export class MediaGenerations {
     } finally {
       await this.persist(j);
     }
+    await this.applyResults(j.projectId);
   }
   async close() {
     this.closed = true;

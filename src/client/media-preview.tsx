@@ -12,6 +12,8 @@ import type { CanvasProps } from "./props.ts";
 import { MediaView, type MediaInfo } from "./media.tsx";
 import { downloadMedia } from "./media-source.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { nodeResource } from "./asset-shared.tsx";
+import { SaveToLibrary } from "./save-to-library.tsx";
 import css from "./studio.module.css";
 
 export function MediaPreview({
@@ -21,7 +23,7 @@ export function MediaPreview({
   start,
   onClose,
   onAdd,
-  onSave,
+  saveToLibrary,
   muted,
   onMutedChange,
 }: {
@@ -31,7 +33,7 @@ export function MediaPreview({
   start?: number;
   onClose(): void;
   onAdd?(): void;
-  onSave?(): void;
+  saveToLibrary?: boolean;
   muted?: boolean;
   onMutedChange?(muted: boolean): void;
 }) {
@@ -79,8 +81,7 @@ export function MediaPreview({
       );
     },
   });
-  if (onSave)
-    actions.push({ label: p.t("saveSelection"), icon: "folder", run: onSave });
+  const resource = saveToLibrary ? nodeResource(data) : undefined;
   const duration = info?.duration;
   const size = file?.size;
   return createPortal(
@@ -236,6 +237,7 @@ export function MediaPreview({
         </aside>
       </div>
       <nav className={css.previewActions} aria-label={p.t("more")}>
+        {resource && <SaveToLibrary p={p} projectId={projectId} resources={[resource]} />}
         {actions.map((action) => (
           <Tooltip key={action.label} label={action.label} side="top">
             <Button
