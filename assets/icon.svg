@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="background" x1="42" y1="38" x2="472" y2="489" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#16085c"/>
+      <stop offset=".52" stop-color="#230bb2"/>
+      <stop offset="1" stop-color="#172af0"/>
+    </linearGradient>
+    <radialGradient id="blue-light" cx="451" cy="330" r="338" gradientUnits="userSpaceOnUse" gradientTransform="translate(53 -30) rotate(14 451 330) scale(1 .94)">
+      <stop stop-color="#0087ff" stop-opacity=".83"/>
+      <stop offset=".5" stop-color="#1743ff" stop-opacity=".67"/>
+      <stop offset="1" stop-color="#2820e6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="connector" x1="151" y1="126" x2="353" y2="380" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d5e7ff"/>
+      <stop offset=".65" stop-color="#9bc6ff"/>
+      <stop offset="1" stop-color="#7399f5"/>
+    </linearGradient>
+    <linearGradient id="porcelain" x1="0" y1="0" x2=".63" y2="1">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2eafa"/>
+    </linearGradient>
+    <linearGradient id="periwinkle" x1="0" y1="0" x2=".62" y2="1">
+      <stop stop-color="#cedfff"/>
+      <stop offset=".56" stop-color="#a9c5ff"/>
+      <stop offset="1" stop-color="#8daaf2"/>
+    </linearGradient>
+    <filter id="shadow" x="-.25" y="-.27" width="1.5" height="1.75">
+      <feDropShadow dx="0" dy="13" stdDeviation="15" flood-color="#100965" flood-opacity=".4"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#background)"/>
+  <rect width="512" height="512" fill="url(#blue-light)"/>
+  <rect x="133" y="148" width="246" height="216" rx="65" fill="none" stroke="#3f57cd" stroke-width="29" transform="translate(0 8)" opacity=".68"/>
+  <rect x="133" y="148" width="246" height="216" rx="65" fill="none" stroke="url(#connector)" stroke-width="29"/>
+  <g filter="url(#shadow)">
+    <rect x="94" y="105" width="154" height="112" rx="26" fill="#abbfea"/>
+    <rect x="94" y="101" width="154" height="106" rx="26" fill="url(#porcelain)"/>
+    <rect x="95" y="102" width="152" height="104" rx="25" fill="none" stroke="#ffffff" stroke-opacity=".62" stroke-width="2"/>
+    <rect x="264" y="303" width="154" height="112" rx="26" fill="#657fdb"/>
+    <rect x="264" y="299" width="154" height="106" rx="26" fill="url(#periwinkle)"/>
+    <rect x="265" y="300" width="152" height="104" rx="25" fill="none" stroke="#eaf4ff" stroke-opacity=".4" stroke-width="2"/>
+  </g>
+</svg>

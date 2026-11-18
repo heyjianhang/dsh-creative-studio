@@ -1304,6 +1304,28 @@
   border-radius: 50% !important;
   background: var(--dsw-alias-bg-module-platform) !important;
 }
+.immersivePreview {
+  inset-block-start: var(--dsh-frame-chrome-top, 0px);
+  -webkit-app-region: no-drag;
+}
+.immersivePreview .previewHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 52px;
+  padding: 4px clamp(18px, 3vw, 28px);
+  background: var(--dsw-alias-bg-base);
+}
+:global(html[data-platform="darwin"]:not([data-fullscreen]))
+  .immersivePreview .previewHeader {
+  /* The traffic lights are native. The preview owns the rest of the title row. */
+  padding-inline-start: 88px;
+  -webkit-app-region: drag;
+}
+.immersivePreview .previewBack {
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
 .previewLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 174px;

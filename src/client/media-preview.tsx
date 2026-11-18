@@ -87,7 +87,7 @@ export function MediaPreview({
   return createPortal(
     <div
       ref={dialog}
-      className={css.mediaPreview}
+      className={`${css.mediaPreview} ${css.immersivePreview}`}
       role="dialog"
       aria-modal="true"
       aria-label={data.label || p.t("previewTitle")}
